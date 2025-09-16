@@ -1,0 +1,20 @@
+{
+  "name": "sulcompany/router-example",
+  "description": "Example app to test SulCompany Router",
+  "require": {
+    "sulcompany/router": "*"
+  },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../"
+    }
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "autoload": {
+    "psr-4": {
+      "Example\\": "app/"
+    }
+  }
+}

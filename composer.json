@@ -1,0 +1,30 @@
+{
+  "name": "sulcompany/router",
+  "description": "Roteador simples com suporte a rotas dinâmicas e múltiplos parâmetros, inspirado no CoffeeCode Router.",
+  "type": "library",
+  "license": "MIT",
+
+  "authors": [
+        {
+            "name": "Francisco Dulo",
+            "email": "franciscojob14@hotmail.com"
+        }
+    ],
+
+
+  "autoload": {
+    "psr-4": {
+      "SulCompany\\Router\\": "src/"
+    }
+  },
+
+  
+  "minimum-stability": "stable",
+  
+  "require": {}
+}
+
+
+
+
+

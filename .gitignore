@@ -1,0 +1,5 @@
+vendor/
+composer.lock
+/Example/vendor/
+/Example/composer.lock
+/Example/app/cache/
