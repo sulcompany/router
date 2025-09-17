@@ -13,15 +13,14 @@
 
 
   "autoload": {
-    "psr-4": {
-      "SulCompany\\Router\\": "src/"
-    }
+      "psr-4": {
+        "SulCompany\\Router\\": "src/"
+      }
   },
-
   
-  "minimum-stability": "stable",
-  
-  "require": {}
+  "require": {
+      "php": ">=7.4"
+  }
 }
 
 
