@@ -87,30 +87,29 @@ trait RouterTrait
      */
     protected function formSpoofing(): void
     {
-        $post = filter_input_array(INPUT_POST, FILTER_DEFAULT);
+        $postData = filter_input_array(INPUT_POST, FILTER_DEFAULT) ?? [];
 
-        if (!empty($post['_method']) && in_array(strtoupper($post['_method']), ["PUT", "PATCH", "DELETE"])) {
-            $this->httpMethod = strtoupper($post['_method']);
-            $this->data = $post;
-            unset($this->data["_method"]);
-            return;
+        $jsonData = [];
+        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+        if (stripos($contentType, 'application/json') !== false) {
+            $raw = file_get_contents('php://input');
+            $jsonData = json_decode($raw, true) ?? [];
         }
 
-        if ($this->httpMethod === "POST") {
-            $this->data = $post;
-            unset($this->data["_method"]);
-            return;
-        }
+        $queryData = filter_input_array(INPUT_GET, FILTER_DEFAULT) ?? [];
 
-        if (in_array($this->httpMethod, ["PUT", "PATCH", "DELETE"]) && !empty($_SERVER['CONTENT_LENGTH'])) {
-            parse_str(file_get_contents('php://input', false, null, 0, $_SERVER['CONTENT_LENGTH']), $putData);
-            $this->data = $putData;
-            unset($this->data["_method"]);
-            return;
-        }
+        $method = strtoupper($postData['_method'] ?? $_SERVER['REQUEST_METHOD'] ?? 'GET');
 
-        $this->data = [];
+        // Remove o _method do POST se existir
+        unset($postData['_method']);
+
+        // Consolida tudo num só array
+        $this->data = array_merge($queryData, $postData, $jsonData);
+
+        // Força o método HTTP correto para spoofing
+        $this->httpMethod = $method;
     }
+
 
     /**
      * Executa rota encontrada

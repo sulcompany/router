@@ -69,17 +69,25 @@ abstract class Dispatch
             if (preg_match($regex, $this->path, $matches)) {
                 array_shift($matches);
 
+                // Pega os nomes dos parâmetros da URL
                 $paramNames = $route['__paramNames'] ?? [];
+                $routeParams = [];
+
                 foreach ($paramNames as $index => $name) {
                     if (str_ends_with($name, '*')) {
-                        $this->data[rtrim($name, '*')] = explode('/', $matches[$index]);
+                        $routeParams[rtrim($name, '*')] = explode('/', $matches[$index]);
                     } else {
-                        $this->data[$name] = $matches[$index] ?? null;
+                        $routeParams[$name] = $matches[$index] ?? null;
                     }
                 }
 
+                // Junta os dados já capturados pelo formSpoofing() + os da rota
+                $this->data = array_merge($this->data ?? [], $routeParams);
+
+                // Prepara a rota ativa
                 $this->route = $route;
                 $this->route['data'] = $this->data;
+
                 return $this->execute();
             }
         }
@@ -87,6 +95,7 @@ abstract class Dispatch
         $this->error = self::NOT_FOUND;
         return false;
     }
+
 
     public function namespace(?string $namespace): Dispatch
     {

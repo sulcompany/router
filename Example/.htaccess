@@ -1,5 +1,7 @@
 RewriteEngine On
 
+Options All -Indexes
+
 # Redireciona tudo para index.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
