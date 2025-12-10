@@ -7,9 +7,9 @@ use SulCompany\Router\Router;
 $route = new Router('http://localhost/router/Example');
 
 // Ativa o cache
-$route->enableCache(__DIR__ . '/app/cache/router.cache.php');
+//$route->enableCache(__DIR__ . '/app/cache/router.cache.php');
 
-if (!$route->loadCache()) {
+//if (!$route->loadCache()) {
     // Define namespace, rotas, etc.
 
     $route->namespace("Example\Http\Controllers"); 
@@ -30,8 +30,8 @@ if (!$route->loadCache()) {
     });
 
     // Salva cache
-    $route->cacheRoutesIfEnabled();
-}
+    //$route->cacheRoutesIfEnabled();
+//}
 
 // Dispara a rota
 $route->dispatch();

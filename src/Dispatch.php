@@ -18,6 +18,9 @@ abstract class Dispatch
     protected ?array $data = null;
     protected ?int $error = null;
 
+    /** @var array Middlewares globais */
+    protected array $globalMiddleware = [];
+
     public const BAD_REQUEST = 400;
     public const NOT_FOUND = 404;
     public const METHOD_NOT_ALLOWED = 405;
@@ -27,34 +30,25 @@ abstract class Dispatch
     {
         $this->projectUrl = rtrim($projectUrl, "/");
         $this->separator = $separator ?? ":";
-        $this->httpMethod = $_SERVER['REQUEST_METHOD'];
+        $this->httpMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-        // Extrai a rota limpa a partir do REQUEST_URI e da base da aplicação
         $this->path = $this->extractPathFromRequestUri();
     }
 
-
     private function extractPathFromRequestUri(): string
     {
-        // Extrai o path base do projectUrl (ex: /router/example)
         $basePath = parse_url($this->projectUrl, PHP_URL_PATH) ?: '/';
-
-        // Extrai o path da requisição atual (ex: /router/example/test)
         $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
 
-        // Remove o basePath do início do requestUri
         if (str_starts_with($requestUri, $basePath)) {
             $routePath = substr($requestUri, strlen($basePath));
         } else {
-            // Se não bate, assume toda a requestUri
             $routePath = $requestUri;
         }
 
-        // Normaliza a rota, garantindo barra inicial e sem barra no fim
         $routePath = '/' . ltrim($routePath, '/');
         $routePath = rtrim($routePath, '/');
 
-        // Raiz da aplicação = "/"
         return $routePath === '' ? '/' : $routePath;
     }
 
@@ -69,7 +63,6 @@ abstract class Dispatch
             if (preg_match($regex, $this->path, $matches)) {
                 array_shift($matches);
 
-                // Pega os nomes dos parâmetros da URL
                 $paramNames = $route['__paramNames'] ?? [];
                 $routeParams = [];
 
@@ -81,10 +74,8 @@ abstract class Dispatch
                     }
                 }
 
-                // Junta os dados já capturados pelo formSpoofing() + os da rota
                 $this->data = array_merge($this->data ?? [], $routeParams);
 
-                // Prepara a rota ativa
                 $this->route = $route;
                 $this->route['data'] = $this->data;
 
@@ -96,31 +87,27 @@ abstract class Dispatch
         return false;
     }
 
-
     public function namespace(?string $namespace): Dispatch
     {
         $this->namespace = ($namespace ? ucwords($namespace) : null);
         return $this;
     }
 
-    
     public function group(string $prefix, callable $callback, array|string $middleware = null): self
     {
         $previousGroup = $this->group;
         $previousMiddleware = $this->middleware;
 
         $this->group = trim($prefix, "/");
-        $this->middleware = $middleware ? [$this->group => $middleware] : null;
+        $this->middleware = $middleware ? [$this->group => (array)$middleware] : null;
 
         $callback($this);
 
-        // Reset após o callback
         $this->group = $previousGroup;
         $this->middleware = $previousMiddleware;
 
         return $this;
     }
-
 
     public function data(): ?array
     {
@@ -142,5 +129,12 @@ abstract class Dispatch
     public function error(): ?int
     {
         return $this->error;
+    }
+
+    public function addGlobalMiddleware(array|string $middleware): self
+    {
+        if (is_string($middleware)) $middleware = [$middleware];
+        $this->globalMiddleware = array_merge($this->globalMiddleware ?? [], $middleware);
+        return $this;
     }
 }

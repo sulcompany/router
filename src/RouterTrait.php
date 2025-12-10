@@ -5,12 +5,12 @@ namespace SulCompany\Router;
 trait RouterTrait
 {
     /**
-     * Registra uma nova rota
+     * Adiciona uma nova rota
      */
     protected function addRoute(
         string $method,
         string $route,
-        callable|string $handler,
+        callable|array|string $handler,
         string $name = null,
         array|string $middleware = null
     ): void {
@@ -19,7 +19,11 @@ trait RouterTrait
 
         [$regex, $paramNames] = $this->compileRegex($route);
         $parsedHandler = $this->parseHandler($handler);
-        $effectiveMiddleware = $middleware ?? ($this->middleware[$this->group] ?? null);
+
+        // Middlewares: rota > grupo > global
+        $routeMiddleware = (array) ($middleware ?? ($this->middleware[$this->group] ?? []));
+        $globalMiddleware = $this instanceof Router ? $this->getGlobalMiddlewares() : [];
+        $effectiveMiddleware = array_merge($globalMiddleware, $routeMiddleware);
 
         $this->routes[$method][$regex] = [
             "route" => $route,
@@ -33,7 +37,7 @@ trait RouterTrait
     }
 
     /**
-     * Normaliza a rota, aplicando prefixo de grupo e removendo barras extras
+     * Normaliza a rota, aplicando grupo e removendo barras extras
      */
     private function normalizeRoute(string $route): string
     {
@@ -43,35 +47,26 @@ trait RouterTrait
     }
 
     /**
-     * Compila rota para regex e extrai nomes de parâmetros
-     *
-     * @return array{0: string, 1: array}
+     * Compila a rota em regex e extrai nomes dos parâmetros
      */
     private function compileRegex(string $route): array
     {
-        // Match: {param} e {param*}
         preg_match_all('~\{([a-zA-Z_][a-zA-Z0-9_-]*\*?)\}~', $route, $paramMatches);
         $paramNames = $paramMatches[1] ?? [];
 
-        // Substitui {param*} por (.+) (múltiplos segmentos)
         $regex = preg_replace('~\{([a-zA-Z_][a-zA-Z0-9_-]*)\*\}~', '(.+)', $route);
-
-        // Substitui {param} por ([^/]+) (um único segmento)
         $regex = preg_replace('~\{([a-zA-Z_][a-zA-Z0-9_-]*)\}~', '([^/]+)', $regex);
 
         return ["~^{$regex}$~", $paramNames];
     }
 
     /**
-     * Analisa handler e extrai controlador, método e nome qualificado
-     *
-     * @return array{fqcn?: string, callable?: callable, method?: string}
+     * Analisa o handler e retorna array com fqcn e método
      */
-    private function parseHandler(callable|string $handler): array
+    private function parseHandler(callable|array|string $handler): array
     {
-        if (is_callable($handler)) {
-            return ['callable' => $handler];
-        }
+        if (is_callable($handler)) return ['callable' => $handler];
+        if (is_array($handler) && count($handler) === 2) return ['fqcn' => $handler[0], 'method' => $handler[1]];
 
         [$controller, $method] = explode($this->separator, $handler) + [null, null];
 
@@ -83,7 +78,7 @@ trait RouterTrait
     }
 
     /**
-     * Suporte a form spoofing: _method
+     * Suporte a spoofing de método (_method)
      */
     protected function formSpoofing(): void
     {
@@ -99,20 +94,14 @@ trait RouterTrait
         $queryData = filter_input_array(INPUT_GET, FILTER_DEFAULT) ?? [];
 
         $method = strtoupper($postData['_method'] ?? $_SERVER['REQUEST_METHOD'] ?? 'GET');
-
-        // Remove o _method do POST se existir
         unset($postData['_method']);
 
-        // Consolida tudo num só array
         $this->data = array_merge($queryData, $postData, $jsonData);
-
-        // Força o método HTTP correto para spoofing
         $this->httpMethod = $method;
     }
 
-
     /**
-     * Executa rota encontrada
+     * Executa a rota ativa
      */
     private function execute(): bool
     {
@@ -121,9 +110,7 @@ trait RouterTrait
             return false;
         }
 
-        if (!$this->middleware()) {
-            return false;
-        }
+        if (!$this->middleware()) return false;
 
         if (is_callable($this->route['handler'])) {
             call_user_func($this->route['handler'], $this->route['data'] ?? [], $this);
@@ -150,7 +137,7 @@ trait RouterTrait
     }
 
     /**
-     * Executa middlewares
+     * Executa middlewares (global, grupo ou rota)
      */
     private function middleware(): bool
     {
@@ -169,16 +156,14 @@ trait RouterTrait
                 return false;
             }
 
-            if (!$instance->handle($this)) {
-                return false;
-            }
+            if (!$instance->handle($this)) return false;
         }
 
         return true;
     }
 
     /**
-     * Gera rota com dados tratados (para named routes, por exemplo)
+     * Gera URL tratada (named routes)
      */
     private function treat(array $routeItem, ?array $data = null): ?string
     {
@@ -189,9 +174,7 @@ trait RouterTrait
             $params = [];
 
             foreach ($data as $key => $value) {
-                if (!str_contains($route, "{{$key}}")) {
-                    $params[$key] = $value;
-                }
+                if (!str_contains($route, "{{$key}}")) $params[$key] = $value;
                 $arguments["{{$key}}"] = $value;
             }
 
