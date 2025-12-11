@@ -4,13 +4,10 @@ namespace SulCompany\Router;
 
 trait RouterTrait
 {
-    /**
-     * Adiciona uma nova rota
-     */
     protected function addRoute(
         string $method,
         string $route,
-        callable|array|string $handler,
+        callable|array $handler,
         string $name = null,
         array|string $middleware = null
     ): void {
@@ -18,9 +15,9 @@ trait RouterTrait
         $this->formSpoofing();
 
         [$regex, $paramNames] = $this->compileRegex($route);
-        $parsedHandler = $this->parseHandler($handler);
 
-        // Middlewares: rota > grupo > global
+        $parsedHandler = is_callable($handler) ? ['callable' => $handler] : ['fqcn' => $handler[0], 'method' => $handler[1]];
+
         $routeMiddleware = (array) ($middleware ?? ($this->middleware[$this->group] ?? []));
         $globalMiddleware = $this instanceof Router ? $this->getGlobalMiddlewares() : [];
         $effectiveMiddleware = array_merge($globalMiddleware, $routeMiddleware);
@@ -36,9 +33,6 @@ trait RouterTrait
         ];
     }
 
-    /**
-     * Normaliza a rota, aplicando grupo e removendo barras extras
-     */
     private function normalizeRoute(string $route): string
     {
         $route = trim($route, "/");
@@ -46,9 +40,6 @@ trait RouterTrait
         return "/" . trim($route, "/");
     }
 
-    /**
-     * Compila a rota em regex e extrai nomes dos parâmetros
-     */
     private function compileRegex(string $route): array
     {
         preg_match_all('~\{([a-zA-Z_][a-zA-Z0-9_-]*\*?)\}~', $route, $paramMatches);
@@ -60,31 +51,11 @@ trait RouterTrait
         return ["~^{$regex}$~", $paramNames];
     }
 
-    /**
-     * Analisa o handler e retorna array com fqcn e método
-     */
-    private function parseHandler(callable|array|string $handler): array
-    {
-        if (is_callable($handler)) return ['callable' => $handler];
-        if (is_array($handler) && count($handler) === 2) return ['fqcn' => $handler[0], 'method' => $handler[1]];
-
-        [$controller, $method] = explode($this->separator, $handler) + [null, null];
-
-        return [
-            'controller' => $controller,
-            'method' => $method,
-            'fqcn' => $this->namespace ? "{$this->namespace}\\{$controller}" : $controller,
-        ];
-    }
-
-    /**
-     * Suporte a spoofing de método (_method)
-     */
     protected function formSpoofing(): void
     {
         $postData = filter_input_array(INPUT_POST, FILTER_DEFAULT) ?? [];
-
         $jsonData = [];
+
         $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
         if (stripos($contentType, 'application/json') !== false) {
             $raw = file_get_contents('php://input');
@@ -100,9 +71,6 @@ trait RouterTrait
         $this->httpMethod = $method;
     }
 
-    /**
-     * Executa a rota ativa
-     */
     private function execute(): bool
     {
         if (!$this->route) {
@@ -136,9 +104,6 @@ trait RouterTrait
         return true;
     }
 
-    /**
-     * Executa middlewares (global, grupo ou rota)
-     */
     private function middleware(): bool
     {
         $middlewares = (array) ($this->route["middlewares"] ?? []);
@@ -162,9 +127,6 @@ trait RouterTrait
         return true;
     }
 
-    /**
-     * Gera URL tratada (named routes)
-     */
     private function treat(array $routeItem, ?array $data = null): ?string
     {
         $route = $routeItem["route"];
@@ -184,9 +146,6 @@ trait RouterTrait
         return "{$this->projectUrl}{$route}";
     }
 
-    /**
-     * Substitui argumentos e adiciona query string
-     */
     private function process(string $route, array $arguments, ?array $params = null): string
     {
         $query = (!empty($params) ? "?" . http_build_query($params) : "");

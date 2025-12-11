@@ -12,14 +12,13 @@ abstract class Dispatch
     protected ?array $route = null;
     protected array $routes = [];
     protected string $separator;
-    protected ?string $namespace = null;
     protected ?string $group = null;
     protected ?array $middleware = null;
     protected ?array $data = null;
     protected ?int $error = null;
 
     /** @var array Middlewares globais */
-    protected array $globalMiddleware = [];
+    protected array $globalMiddlewares = [];
 
     public const BAD_REQUEST = 400;
     public const NOT_FOUND = 404;
@@ -31,7 +30,6 @@ abstract class Dispatch
         $this->projectUrl = rtrim($projectUrl, "/");
         $this->separator = $separator ?? ":";
         $this->httpMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-
         $this->path = $this->extractPathFromRequestUri();
     }
 
@@ -75,7 +73,6 @@ abstract class Dispatch
                 }
 
                 $this->data = array_merge($this->data ?? [], $routeParams);
-
                 $this->route = $route;
                 $this->route['data'] = $this->data;
 
@@ -85,12 +82,6 @@ abstract class Dispatch
 
         $this->error = self::NOT_FOUND;
         return false;
-    }
-
-    public function namespace(?string $namespace): Dispatch
-    {
-        $this->namespace = ($namespace ? ucwords($namespace) : null);
-        return $this;
     }
 
     public function group(string $prefix, callable $callback, array|string $middleware = null): self
@@ -116,9 +107,8 @@ abstract class Dispatch
 
     public function current(): ?object
     {
-        return (object)array_merge(
+        return (object) array_merge(
             [
-                "namespace" => $this->namespace,
                 "group" => $this->group,
                 "path" => $this->path
             ],
@@ -134,7 +124,12 @@ abstract class Dispatch
     public function addGlobalMiddleware(array|string $middleware): self
     {
         if (is_string($middleware)) $middleware = [$middleware];
-        $this->globalMiddleware = array_merge($this->globalMiddleware ?? [], $middleware);
+        $this->globalMiddlewares = array_merge($this->globalMiddlewares ?? [], $middleware);
         return $this;
+    }
+
+    public function getGlobalMiddlewares(): array
+    {
+        return $this->globalMiddlewares;
     }
 }
