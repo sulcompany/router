@@ -1,208 +1,178 @@
-# Router @SulCompany 
+# Router @SulCompany
 
-> US English below | PT leia em português abaixo
+Um **roteador simples, flexível e sem dependências**, com suporte a:
 
-A simple, flexible, and dependency-free router with support for:
-
-###### Um roteador simples, flexível e sem dependências, com suporte a:
-
-- REST routes - Rotas REST (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`)
-- Named parameters - Parâmetros nomeados (`/user/{id}`)
-- Dynamic multi-parameters - Parâmetros múltiplos dinâmicos (`/produto/{params*}`)
-- middlewares (`/route`, `Controller:action`, `Example\Middlewares\AuthMiddleware`)
-- Route groups - Grupo de rotas 
-- Route caching for performance optimization - Cache de rotas para melhorar performance
-- Route - rota "clean URLs"
+- Rotas REST (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`)
+- Parâmetros nomeados (`/user/{id}`)
+- Parâmetros múltiplos dinâmicos (`/produto/{params*}`)
+- Middlewares (`/route`, `[Controller::class, 'method']`, `Example\Middlewares\AuthMiddleware`)
+- Grupos de rotas com prefixos
+- Cache de rotas para otimização de performance
+- Rotas nomeadas e geração de URLs
+- Acesso fácil a dados de request e parâmetros dentro de controllers
 
 ---
 
-## 🚀 Installation | Instalação
-
-Router is available via Composer - Router está disponível via composer:
+## 🚀 Instalação
 
 ```bash
 composer require sulcompany/router
-```
-
-## Documentation | Documentação
-
-For usage details, check the example folder in the component directory.
-Make sure all navigation is redirected to the main routing file (index.php), where all traffic is handled.
-See the example below:
-
-###### Para ver como usar o router, consulte a pasta de exemplo no diretório do componente. Certifique-se de redirecionar a navegação para o arquivo principal de rotas (index.php), onde todo o tráfego é tratado. Veja o exemplo abaixo:
-
-#### Apache
-
-```apacheconfig
-RewriteEngine On
-
-#Options All -Indexes
-
-## ROUTER WWW Redirect.
-#RewriteCond %{HTTP_HOST} !^www\. [NC]
-#RewriteRule ^ https://www.%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-
-## ROUTER HTTPS Redirect
-#RewriteCond %{HTTP:X-Forwarded-Proto} !https
-#RewriteCond %{HTTPS} off
-#RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-
-# ROUTER URL Rewrite
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.php [QSA,L]
-```
 
 
-##### Basic usage | exemplo básico de uso
+🔹 Estrutura Básica do Projeto
 
-```php
-<?php 
-
+<?php
 use SulCompany\Router\Router;
+use SulCompany\Router\Dispatcher;
 
-$router = new Router("https://www.youdomain.com", "@");
+$router = new Router("https://www.dominio.com");
 
-$route->namespace("App\Http\Controllers"); 
+// Adicionar middlewares globais
+$router->addGlobalMiddleware(App\Http\Middlewares\AuthMiddleware::class);
 
-$router->get("/about", "Controller@method");
-$router->post("/user/regist", "Controller@method");
-$router->put("/user/{id}/profile", "Controller@method");
-$router->patch("/user/{id}/profile/{photo}", "Controller@method");
-$router->delete("/user/{id}", "Controller:method");
+// Registrar rotas (simples ou grupos)
+// ...
 
-$router->namespace("App\Http\Controllers\Admin");
-$router->group('admin', function($router) { 
-        $router->get('/', 'DashController@index');
-    }, middleware: 'App\Http\Middlewares\AuthAdminMiddleware'
-);
+$dispatcher = new Dispatcher($router);
+$dispatcher->dispatch();
 
-$router->dispatch();
-
-if ($router->error()) {
-    echo $router->error();
+if ($dispatcher->error()) {
+    echo "Erro HTTP: " . $dispatcher->error();
 }
+
+
+⚡ Fluxo do Router
+
+Inicializar Router
+
+Adicionar middlewares globais
+
+Habilitar cache de rotas (opcional)
+
+Registrar rotas simples ou grupos
+
+Criar Dispatcher
+
+Executar dispatch
+
+Acessar dados ou tratar erros ($dispatcher->data(), $dispatcher->params(), $dispatcher->error())
+
+
+📋 Tabela de Métodos do Router
+
+| Método                                        | Descrição                             | Exemplo                                                                                                                   |
+| --------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `get($uri, $handler, $name=null)`             | Registra rota GET                     | `$router->get("/about", [SiteController::class,'about'], 'site.about');`                                                  |
+| `post($uri, $handler, $name=null)`            | Registra rota POST                    | `$router->post("/user/register", [UserController::class,'register'], 'user.register');`                                   |
+| `put($uri, $handler, $name=null)`             | Registra rota PUT                     | `$router->put("/user/{id}/profile", [UserController::class,'updateProfile'], 'user.updateProfile');`                      |
+| `patch($uri, $handler, $name=null)`           | Registra rota PATCH                   | `$router->patch("/user/{id}/photo", [UserController::class,'updatePhoto'], 'user.updatePhoto');`                          |
+| `delete($uri, $handler, $name=null)`          | Registra rota DELETE                  | `$router->delete("/user/{id}", [UserController::class,'delete'], 'user.delete');`                                         |
+| `group($prefix, $callback, $middleware=null)` | Agrupa rotas com prefixo e middleware | `$router->group('admin', fn($r)=>$r->get('/', [DashController::class,'index']), middleware: AuthAdminMiddleware::class);` |
+| `addGlobalMiddleware($middleware)`            | Adiciona middlewares globais          | `$router->addGlobalMiddleware(AuthMiddleware::class);`                                                                    |
+| `enableCache($file)`                          | Habilita cache de rotas               | `$router->enableCache(__DIR__.'/cache/routes.php');`                                                                      |
+| `loadCache(): bool`                           | Carrega rotas do cache                | `$router->loadCache();`                                                                                                   |
+| `routes(): array`                             | Retorna todas as rotas registradas    | `$router->routes();`                                                                                                      |
+| `urlFor($name, $params=[], $query=[])`        | Gera URL para rota nomeada            | `$router->urlFor('user.show', ['id'=>42], ['ref'=>'email']);`
+                                                            |
+
+
+
+🗂 Tabela de Métodos do Dispatcher
+
+| Método               | Descrição                                     | Exemplo                    |
+| -------------------- | --------------------------------------------- | -------------------------- |
+| `dispatch(): bool`   | Executa a rota correspondente à requisição    | `$dispatcher->dispatch();` |
+| `error(): ?int`      | Retorna código HTTP do erro (404, 405, etc)   | `$dispatcher->error();`    |
+| `data(): ?array`     | Retorna dados da requisição (GET, POST, JSON) | `$dispatcher->data();`     |
+| `params(): ?array`   | Retorna parâmetros extraídos da rota          | `$dispatcher->params();`   |
+| `current(): ?object` | Retorna informações da rota atual             | `$dispatcher->current();`  |
+
+
+
+🏷 Named Routes & URL Generation
+
+| Exemplo                                                                        | Resultado                                                |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| `$router->urlFor('user.show', ['id'=>42]);`                                    | `https://www.dominio.com/user/42`                        |
+| `$router->urlFor('product.show', ['slug'=>'produto'], ['ref'=>'newsletter']);` | `https://www.dominio.com/product/produto?ref=newsletter` |
+
+
+📁 Grupos de Rotas & Middleware
+
+$router->group('admin', function($router){
+    $router->get('/dashboard', [Admin\DashController::class,'index'], 'admin.dashboard');
+    $router->get('/users', [Admin\UserController::class,'list'], 'admin.users.list');
+}, middleware: [AuthAdminMiddleware::class]);
+
+Prefixo automático aplicado: /admin/dashboard
+Middlewares do grupo + globais aplicados em cada rota do grupo
+
+
+📌 Parâmetros Múltiplos Dinâmicos
+$router->get('/files/{path*}', [FileController::class,'download'], 'files.download');
+
+// URL: /files/docs/2025/relatorio.pdf
+// $dispatcher->params() => ['path' => ['docs','2025','relatorio.pdf']]
+
+
+📝 Acesso a Dados e Parâmetros em Controllers
+
+class UserController {
+    public function show(array $data, array $params) {
+        $id = $params['id'] ?? null;
+        $email = $data['email'] ?? null;
+        echo "User ID: $id, Email: $email";
+    }
+}
+
+$data: GET, POST e JSON da requisição
+$params: parâmetros da rota ({id}, {slug}, {params*})
+
+
+⚡ Cache de Rotas
+Otimiza performance evitando recompilar regex a cada requisição
+Sempre que adicionar novas rotas, limpe ou regenere o cache
+
+$router->enableCache(__DIR__.'/cache/routes.php');
+
+if (!$router->loadCache()) {
+    $router->get('/about', [SiteController::class,'about']);
+
+    $router->compile();
+    $router->cacheCompiledRoutes();
+}
+
+
+✅ Resumo Visual do Fluxo
+[ Router ]
+  ↓ addGlobalMiddleware
+  ↓ enableCache (opcional)
+  ↓ register routes (get, post, put, patch, delete)
+  ↓ group routes (prefix + middleware)
+  ↓ compile & cache (opcional)
+  ↓
+[ Dispatcher ]
+  ↓ dispatch()
+  ↓
+[ Controller / Closure ]
+  ↓
+[ Response / Error Handling ]
+
+
+Credits
+
+Francisco Dulo (GitHub
+)
+
+Sul Company Lda (GitHub
+)
+
+Todos os colaboradores (Contributors
+)
+
+
+
+
+
+
 ```
-
-
-##### Basic usage with Route Caching | Exemplo básico de uso com cacheamento de rotas
-
-```php
-<?php 
-
-use SulCompany\Router\Router;
-
-$router = new Router("https://www.youdomain.com", "@");
-
-$route->enableCache(__DIR__ . '/app/cache/router.cache.php');
-
-if (!$route->loadCache()) {
-    $route->namespace("App\Http\Controllers"); 
-
-    $router->get("/about", "Controller@method");
-    $router->post("/user/regist", "Controller@method");
-    /**
-     * Others routes
-    */
-
-    $route->cacheRoutesIfEnabled();
-}
-
-$router->dispatch();
-
-if ($router->error()) {
-    echo $router->error();
-}
-```
-
-##### Routes
-
-```php
-<?php 
-
-use SulCompany\Router\Router;
-
-/**
- * You can use @, : or any custom separator to define the method-controller 
- * relationship in route definitions
- * 
- * Use @ , : ou qualquer separador para definir o controller-metodo ao definir rotas
-**/
-$router = new Router("https://www.youdomain.com", "@");
-
-/**
- * routes
- * The controller must be in the namespace Test\Controller
- * O controlador deve estar no namespace App\Http\Controller.
- */
-$route->namespace("App\Http\Controllers"); 
-
-$router->get("/about", "Controller@method");
-$router->post("/user/regist", "Controller@method");
-$router->put("/user/{id}/profile", "Controller@method");
-$router->patch("/user/{id}/profile/{photo}", "Controller@method");
-$router->delete("/user/{id}", "Controller:method");
-
-
-
-/**
- * group by routes and namespace | grupo de routas e namespace
- * The controller must be in the namespace App\Http\Controllers\Admin
- */
-$route->namespace("App\Http\Controllers\Admin");
-$route->group('admin', function($router) { 
-        $router->get('/', 'DashController@index');
-        $router->get('/user/edit/{id}', 'DashController@index');
-    }, middleware: 'App\Http\Middlewares\AuthInventoryMiddleware'
-);
-
-
-/**
- * This method executes the routes |  este metodo executa as rotas
- */
-$router->dispatch();
-
-if ($router->error()) {
-    echo $router->error();
-}
-```
-
-##### Named params | Parâmetros nomedados
-
-```php
-<?php 
-
-use SulCompany\Router\Router;
-
-$router = new Router("https://www.youdomain.com", "@");
-
-$route->namespace("App\Http\Controllers"); 
-
-$router->get("/user/{id}", "Controller@method");
-
-/**
- *{id} is a named parameter. You can define a route like domain/user/248 
- *and retrieve the parameter like this: $id = $data['id']
- *{id} e um parametro nomeado e. Defina uma routa assim: dominio/user/248
- * e podes receber o parametro deste geito $id = $data['id'];
-*/
-
-$router->dispatch();
-
-if ($router->error()) {
-    echo $router->error();
-}
-```
-
-## Credits
-
-- [Francisco Dulo](https://github.com/jobpires14) (Developer)
-- [Sul Company Lda](https://github.com/sulcompany) (Team)
-- [All Contributors](https://github.com/sulcompany/router/contributors) (This Rock)
-
-
-## License
-
-The MIT License (MIT). Please see [License File](https://github.com/sulcompany/router/blob/main/LICENSE) for more
-information.
