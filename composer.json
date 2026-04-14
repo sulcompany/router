@@ -1,6 +1,6 @@
 {
     "name": "sulcompany/router",
-    "description": "Roteador simples com suporte a rotas dinâmicas e múltiplos parâmetros, inspirado no CoffeeCode Router.",
+    "description": "Roteador simples com suporte a rotas dinâmicas e múltiplos parâmetros",
     "type": "library",
     "license": "MIT",
 
@@ -19,7 +19,8 @@
     },
     
     "require": {
-        "php": ">=7.4"
+        "php": ">=7.4",
+        "psr/container": "^2.0"
     }
 }
 

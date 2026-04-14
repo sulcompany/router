@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace SulCompany\Router;
@@ -7,11 +6,13 @@ namespace SulCompany\Router;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
+use Psr\Container\ContainerInterface;
 
 class Dispatcher
 {
     protected Router $router;
     protected ?array $requestData = null;
+    protected ?array $nameIndex;
     protected string $httpMethod;
     protected string $path;
     protected ?Route $matchedRoute = null;
@@ -21,27 +22,35 @@ class Dispatcher
     protected Request $request;
     protected Response $response;
 
+    protected ?ContainerInterface $container = null;
+
     public const BAD_REQUEST = 400;
     public const NOT_FOUND = 404;
     public const METHOD_NOT_ALLOWED = 405;
     public const NOT_IMPLEMENTED = 501;
 
-    public function __construct(Router $router)
+    public function __construct(Router $router, ?ContainerInterface $container = null)
     {
         $this->router = $router;
+        $this->container = $container;
+        $this->nameIndex = $router->getNameIndex();
+
         $this->httpMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
         $this->path = $this->extractPathFromRequestUri($router->getProjectUrl());
         $this->gatherRequestData();
 
         $this->request = new Request(
+            $_SERVER,
             $_GET ?? [],
             $_POST ?? [],
             $this->requestData['__json'] ?? [],
+            $_FILES?? [],
             $this->httpMethod,
             $this->path
         );
 
         $this->response = new Response();
+
         $this->ensureCompiled();
     }
 
@@ -63,63 +72,75 @@ class Dispatcher
 
         if (str_starts_with($requestUri, $basePath)) {
             $routePath = substr($requestUri, strlen($basePath));
-        } else $routePath = $requestUri;
+        } else {
+            $routePath = $requestUri;
+        }
 
         $routePath = '/' . ltrim($routePath, '/');
         return rtrim($routePath, '/') ?: '/';
     }
 
+
     protected function gatherRequestData(): void
     {
-        $post = filter_input_array(INPUT_POST, FILTER_DEFAULT) ?? [];
-        $get = filter_input_array(INPUT_GET, FILTER_DEFAULT) ?? [];
-
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
         $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+
+        $get = $_GET ?? [];
+        $post = $_POST ?? [];
         $json = [];
-        if (stripos($contentType, 'application/json') !== false) {
+
+        // Se for PUT, PATCH ou DELETE precisamos ler manualmente
+        if (in_array($method, ['PUT', 'PATCH', 'DELETE'])) {
+
             $raw = file_get_contents('php://input');
-            $json = json_decode($raw, true) ?? [];
+
+            if (stripos($contentType, 'application/json') !== false) {
+                $json = json_decode($raw, true) ?? [];
+            } else {
+                parse_str($raw, $post);
+            }
         }
 
-        $method = strtoupper($post['_method'] ?? $_SERVER['REQUEST_METHOD'] ?? 'GET');
-        unset($post['_method']);
+        // suporte a _method override
+        if (isset($post['_method'])) {
+            $method = strtoupper($post['_method']);
+            unset($post['_method']);
+        }
 
-        $this->httpMethod = $method;
-
+        $this->httpMethod = strtoupper($method);
         $this->requestData = array_merge($get, $post);
         $this->requestData['__json'] = $json;
     }
 
+    
     public function dispatch(): bool
     {
         $method = $this->httpMethod;
 
-        // Static
+        // Static routes
         $static = $this->router->getStaticRoutes()[$method] ?? [];
         if (isset($static[$this->path])) {
             $this->matchedRoute = $static[$this->path];
             $this->params = [];
+            $this->request->setRoute($this->matchedRoute);
             return $this->runMatched();
         }
 
-        // Dynamic
+        // Dynamic routes
         $dynamic = $this->router->getDynamicRoutes()[$method] ?? [];
         foreach ($dynamic as $entry) {
             if (preg_match($entry['regex'], $this->path, $matches)) {
                 array_shift($matches);
                 $route = $entry['route'];
                 $params = [];
-
                 foreach ($route->paramNames as $i => $name) {
-                    if (str_ends_with($name, '*')) {
-                        $params[rtrim($name, '*')] = explode('/', $matches[$i] ?? '');
-                    } else {
-                        $params[$name] = $matches[$i] ?? null;
-                    }
+                    $params[str_ends_with($name, '*') ? rtrim($name, '*') : $name] =
+                        str_ends_with($name, '*') ? explode('/', $matches[$i] ?? '') : ($matches[$i] ?? null);
                 }
-
                 $this->matchedRoute = $route;
                 $this->params = $params;
+                $this->request->setRoute($route);
                 return $this->runMatched();
             }
         }
@@ -128,12 +149,14 @@ class Dispatcher
         return false;
     }
 
-    
     public function error(): ?int
     {
         return $this->error;
     }
 
+    /**
+     * Executa middlewares modernos e controller
+     */
     protected function runMatched(): bool
     {
         if (!$this->matchedRoute) {
@@ -141,19 +164,37 @@ class Dispatcher
             return false;
         }
 
-        // Run middlewares
+        $executedPipeline = [];
+
+        // ---- BEFORE MIDDLEWARES ----
         foreach ($this->matchedRoute->middlewares as $mwClass) {
-            $mw = new $mwClass();
-            if (!method_exists($mw, 'handle')) {
-                $this->error = self::METHOD_NOT_ALLOWED;
-                return false;
+            $middleware = $this->resolveClass($mwClass);
+            $executedPipeline[] = $middleware;
+
+            if (method_exists($middleware, 'before')) {
+                if ($middleware->before($this->request, $this->response) === false) {
+                    return false; // interrompe pipeline
+                }
+                continue;
             }
-            if (!$mw->handle($this->request, $this->response)) {
-                return false;
+
+            $this->error = self::METHOD_NOT_ALLOWED;
+            return false;
+        }
+
+        // ---- CONTROLLER ----
+        if (!$this->runController()) {
+            return false;
+        }
+
+        // ---- AFTER MIDDLEWARES ----
+        foreach (array_reverse($executedPipeline) as $middleware) {
+            if (method_exists($middleware, 'after')) {
+                $middleware->after($this->request, $this->response);
             }
         }
 
-        return $this->runController();
+        return true;
     }
 
     protected function runController(): bool
@@ -183,7 +224,6 @@ class Dispatcher
         }
 
         $reflection = new ReflectionMethod($controller, $method);
-
         $args = [];
         foreach ($reflection->getParameters() as $param) {
             $args[] = $this->resolveParameter($param);
@@ -193,14 +233,20 @@ class Dispatcher
         return true;
     }
 
+    /**
+     * Resolve uma classe usando container ou reflection
+     */
     protected function resolveClass(string $class)
     {
-        $r = new ReflectionClass($class);
-
-        $constructor = $r->getConstructor();
-        if (!$constructor) {
-            return new $class();
+        // 1. Tenta container
+        if ($this->container && $this->container->has($class)) {
+            return $this->container->get($class);
         }
+
+        // 2. Reflection
+        $r = new ReflectionClass($class);
+        $constructor = $r->getConstructor();
+        if (!$constructor) return new $class();
 
         $args = [];
         foreach ($constructor->getParameters() as $param) {
@@ -210,6 +256,9 @@ class Dispatcher
         return $r->newInstanceArgs($args);
     }
 
+    /**
+     * Resolve parâmetro de método ou construtor
+     */
     protected function resolveParameter(\ReflectionParameter $param)
     {
         $type = $param->getType();
@@ -217,22 +266,24 @@ class Dispatcher
         if ($type instanceof ReflectionNamedType) {
             $name = $type->getName();
 
+            // Request e Response
             if ($name === Request::class) return $this->request;
             if ($name === Response::class) return $this->response;
 
-            // Try to resolve service (auto-instantiation)
+            // Container / auto-instancia
+            if ($this->container && $this->container->has($name)) {
+                return $this->container->get($name);
+            }
             if (class_exists($name)) {
                 return $this->resolveClass($name);
             }
         }
 
-        // Try route param
+        // Parâmetro da rota
         $pName = $param->getName();
-        if (isset($this->params[$pName])) {
-            return $this->params[$pName];
-        }
+        if (isset($this->params[$pName])) return $this->params[$pName];
 
-        // Try body/query/all
+        // Query / POST / JSON
         return $this->request->all($pName);
     }
 

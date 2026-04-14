@@ -6,24 +6,31 @@ namespace SulCompany\Router;
 
 class Request
 {
+    protected array $server;
     protected array $get;
     protected array $post;
+    protected array $files;
     protected array $json;
     protected array $all;
     protected array $headers;
+    protected ?Route $route = null;
     protected string $method;
     protected string $path;
 
     public function __construct(
+        array $server = [],
         array $get = [],
         array $post = [],
         array $json = [],
+        array $files = [],
         string $method = 'GET',
         string $path = '/'
     ) {
+        $this->server = $server;
         $this->get = $get;
         $this->post = $post;
         $this->json = $json;
+        $this->files = $files;
         $this->method = strtoupper($method);
         $this->path = $path;
 
@@ -34,7 +41,7 @@ class Request
     protected function extractHeaders(): array
     {
         $headers = [];
-        foreach ($_SERVER as $key => $value) {
+        foreach ($this->server as $key => $value) {
             if (str_starts_with($key, 'HTTP_')) {
                 $name = strtolower(str_replace('_', '-', substr($key, 5)));
                 $headers[$name] = $value;
@@ -43,24 +50,46 @@ class Request
         return $headers;
     }
 
+    public function setRoute(Route $route): void
+    {
+        $this->route = $route;
+    }
+
+    public function route(): ?Route
+    {
+        return $this->route;
+    }
+
     public function method(): string { return $this->method; }
     public function path(): string { return $this->path; }
-    public function header(string $name = null) {
+    
+    public function header(string $name = null) : array|string|null
+    {
         if ($name === null) return $this->headers;
         $name = strtolower($name);
         return $this->headers[$name] ?? null;
     }
 
+    
     public function get(string $key = null, $default = null)
     {
         if ($key === null) return $this->get;
         return $this->get[$key] ?? $default;
     }
 
+
     public function post(string $key = null, $default = null)
     {
         if ($key === null) return $this->post;
         return $this->post[$key] ?? $default;
+    }
+
+
+    public function file(string $key = null, $default = null)
+    {
+        if ($key === null) return $this->files;
+
+        return $this->files[$key] ?? $default;
     }
 
     public function json(string $key = null, $default = null)
@@ -69,9 +98,38 @@ class Request
         return $this->json[$key] ?? $default;
     }
 
+
+
     public function all(string $key = null, $default = null)
     {
         if ($key === null) return $this->all;
         return $this->all[$key] ?? $default;
     }
+
+
+
+    public function ip(): ?string
+    {
+        if (!empty($this->server['HTTP_X_FORWARDED_FOR'])) {
+            return explode(',', $this->server['HTTP_X_FORWARDED_FOR'])[0];
+        }
+
+        return $this->server['REMOTE_ADDR'] ?? null;
+    }
+
+
+    public function userAgent(): ?string
+    {
+        return $this->header('user-agent');
+    }
+
+
+    public function wantsJson(): bool
+    {
+        $accept = $this->header('accept') ?? '';
+        $xhr    = $this->header('x-requested-with') ?? '';
+
+        return str_contains($accept, 'application/json') || strtolower($xhr) === 'xmlhttprequest';
+    }
+
 }
