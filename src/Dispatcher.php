@@ -83,32 +83,33 @@ class Dispatcher
 
     protected function gatherRequestData(): void
     {
-        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
         $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
 
         $get = $_GET ?? [];
         $post = $_POST ?? [];
         $json = [];
 
-        // Se for PUT, PATCH ou DELETE precisamos ler manualmente
-        if (in_array($method, ['PUT', 'PATCH', 'DELETE'])) {
-
+        if (
+            in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE']) &&
+            stripos($contentType, 'application/json') !== false
+        ) {
             $raw = file_get_contents('php://input');
 
-            if (stripos($contentType, 'application/json') !== false) {
-                $json = json_decode($raw, true) ?? [];
-            } else {
-                parse_str($raw, $post);
+            $decoded = json_decode($raw, true);
+
+            if (is_array($decoded)) {
+                $json = $decoded;
             }
         }
 
-        // suporte a _method override
         if (isset($post['_method'])) {
             $method = strtoupper($post['_method']);
             unset($post['_method']);
         }
 
-        $this->httpMethod = strtoupper($method);
+        $this->httpMethod = $method;
+
         $this->requestData = array_merge($get, $post);
         $this->requestData['__json'] = $json;
     }
