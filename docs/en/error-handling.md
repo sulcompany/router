@@ -1,47 +1,48 @@
-Error Handling
-← Back to README | 🇵🇹 Português
+# Error Handling
 
-The Router handles routing errors (404, 405, 400) and lets the application handle application errors (500, 503) via a simple contract: ErrorHandlerInterface.
+[← Back to README](../../README.md) | [🇵🇹 Português](../pt/error-handling.md)
 
-Table of Contents
-Overview
+The Router handles **routing errors** (404, 405, 400) and lets the application handle **application errors** (500, 503) via a simple contract: `ErrorHandlerInterface`.
 
-The Contract
+---
 
-DefaultErrorHandler
+## Table of Contents
 
-Custom Handler
+- [Overview](#overview)
+- [The Contract](#the-contract)
+- [DefaultErrorHandler](#defaulterrorhandler)
+- [Custom Handler](#custom-handler)
+- [Using the Handler](#using-the-handler)
+- [How the Dispatcher Handles Errors](#how-the-dispatcher-handles-errors)
+- [Status Code Reference](#status-code-reference)
+- [Exceptions](#exceptions)
+- [Common Patterns](#common-patterns)
+- [Common Errors](#common-errors)
 
-Using the Handler
+---
 
-How the Dispatcher Handles Errors
+## Overview
 
-Status Code Reference
+The Router divides error handling into **two layers**:
 
-Exceptions
+| Layer | Responsibility | Examples |
+|-------|---------------|----------|
+| **Router** | Detecting routing errors, providing a default handler | 404, 405, 400 |
+| **Application** | Deciding what the user sees, logging, custom views | 500, 503, custom 404 |
 
-Common Patterns
+**Key principle:** the Router **does not** know what a "view" is. It only knows:
 
-Common Errors
+- The status code
+- Whether the client wants JSON
+- The matched route (with `context` attribute)
 
-Overview
-The Router divides error handling into two layers:
+The application implements `ErrorHandlerInterface` to decide how to render the error.
 
-Layer	Responsibility	Examples
-Router	Detecting routing errors, providing a default handler	404, 405, 400
-Application	Deciding what the user sees, logging, custom views	500, 503, custom 404
-Key principle: the Router does not know what a "view" is. It only knows:
+---
 
-The status code
+## The Contract
 
-Whether the client wants JSON
-
-The matched route (with context attribute)
-
-The application implements ErrorHandlerInterface to decide how to render the error.
-
-The Contract
-php
+```php
 namespace SulCompany\Router\Contracts;
 
 use SulCompany\Router\Request;
@@ -51,28 +52,31 @@ interface ErrorHandlerInterface
 {
     public function handle(int $status, Request $request, Response $response): Response;
 }
-Important Rules
-The handler does NOT send the response — it only returns it
+```
 
-The caller sends it — either the Dispatcher or the index.php
+### Important Rules
 
-The handler has access to — the status, the Request, and a fresh Response
+1. **The handler does NOT send the response** — it only **returns** it
+2. **The caller sends it** — either the `Dispatcher` or the `index.php`
+3. **The handler has access to** — the status, the `Request`, and a fresh `Response`
 
-Why Return, Not Send?
-Because sending is the last step. The caller may want to:
+### Why Return, Not Send?
 
-Add middleware-like headers
+Because sending is the **last step**. The caller may want to:
 
-Log the response
+- Add middleware-like headers
+- Log the response
+- Send it in a specific order
 
-Send it in a specific order
+Returning keeps the handler **pure** and **testable**.
 
-Returning keeps the handler pure and testable.
+---
 
-DefaultErrorHandler
+## DefaultErrorHandler
+
 The Router ships a fallback for when the app doesn't register one.
 
-php
+```php
 namespace SulCompany\Router;
 
 class DefaultErrorHandler implements ErrorHandlerInterface
@@ -107,36 +111,51 @@ class DefaultErrorHandler implements ErrorHandlerInterface
         };
     }
 }
-Behavior
-Client	Response
-JSON / AJAX	{"success":false,"code":404,"message":"Not Found"}
-Browser	404 — Not Found (text/plain)
-Example: JSON
-json
+```
+
+### Behavior
+
+| Client | Response |
+|--------|----------|
+| JSON / AJAX | `{"success":false,"code":404,"message":"Not Found"}` |
+| Browser | `404 — Not Found` (text/plain) |
+
+### Example: JSON
+
+```json
 {
     "success": false,
     "code": 404,
     "message": "Not Found"
 }
-Example: HTML
-text
+```
+
+### Example: HTML
+
+```
 404 — Not Found
-Note: the default handler returns text/plain, not HTML. Applications that want HTML pages must implement their own handler.
+```
 
-When It's Used
-The DefaultErrorHandler is used when:
+**Note:** the default handler returns `text/plain`, not HTML. Applications that want HTML pages must implement their own handler.
 
-No handler is registered in the container
+### When It's Used
 
-The index.php falls back to new DefaultErrorHandler()
+The `DefaultErrorHandler` is used when:
 
-The Dispatcher does not call it automatically — the caller does.
+1. **No handler is registered** in the container
+2. **The `index.php` falls back** to `new DefaultErrorHandler()`
 
-Custom Handler
-Implement ErrorHandlerInterface in your application.
+The `Dispatcher` **does not** call it automatically — the caller does.
 
-Minimal Example
-php
+---
+
+## Custom Handler
+
+Implement `ErrorHandlerInterface` in your application.
+
+### Minimal Example
+
+```php
 namespace App\Http;
 
 use SulCompany\Router\Contracts\ErrorHandlerInterface;
@@ -158,8 +177,11 @@ final class AppErrorHandler implements ErrorHandlerInterface
         return $response->html("<h1>Error {$status}</h1>", $status);
     }
 }
-With Views (Plates, Twig, Blade...)
-php
+```
+
+### With Views (Plates, Twig, Blade...)
+
+```php
 namespace App\Http;
 
 use SulCompany\Router\Contracts\ErrorHandlerInterface;
@@ -207,27 +229,41 @@ final class AppErrorHandler implements ErrorHandlerInterface
         };
     }
 }
-Using context
-The context attribute is set by group(context: 'admin') and inherited.
+```
 
-php
+### Using `context`
+
+The `context` attribute is set by `group(context: 'admin')` and inherited.
+
+```php
 $router->group('/admin', context: 'admin', callback: function ($r) {
     $r->get('/users', [UserController::class, 'index']);
 });
 
 // Error on /admin/* routes → context = 'admin' → view "admin/errors/404"
-Route	Context	View
-/users (no group)	ecommerce (default)	ecommerce/errors/404
-/admin/users	admin	admin/errors/404
-Using the Handler
-Register in the Container
-php
+```
+
+| Route | Context | View |
+|-------|---------|------|
+| `/users` (no group) | `ecommerce` (default) | `ecommerce/errors/404` |
+| `/admin/users` | `admin` | `admin/errors/404` |
+
+---
+
+## Using the Handler
+
+### Register in the Container
+
+```php
 // bootstrap/app.php or a provider
 $container->singleton(ErrorHandlerInterface::class, function ($c) {
     return new AppErrorHandler($c->get(View::class));
 });
-Call from index.php
-php
+```
+
+### Call from `index.php`
+
+```php
 $errorHandler = $container->has(ErrorHandlerInterface::class)
     ? $container->get(ErrorHandlerInterface::class)
     : new DefaultErrorHandler();
@@ -248,8 +284,11 @@ try {
         ->handle(500, $dispatcher->getRequest(), $dispatcher->getResponse())
         ->send();
 }
-Full index.php Template
-php
+```
+
+### Full `index.php` Template
+
+```php
 <?php
 
 declare(strict_types=1);
@@ -292,62 +331,85 @@ try {
 while (ob_get_level() > 0) {
     ob_end_flush();
 }
-How the Dispatcher Handles Errors
-The Dispatcher treats errors in three categories:
+```
 
-1. Success — dispatch() returns true
-The controller ran, the Response is set, and the Dispatcher sent it.
+---
 
-php
+## How the Dispatcher Handles Errors
+
+The `Dispatcher` treats errors in **three categories**:
+
+### 1. Success — `dispatch()` returns `true`
+
+The controller ran, the `Response` is set, and the `Dispatcher` **sent** it.
+
+```php
 if ($dispatcher->dispatch()) {
     // Response was sent
 }
-2. Middleware Stopped — dispatch() returns false with a built Response
-The middleware set the Response and returned false. The Dispatcher sent that response.
+```
 
-php
+### 2. Middleware Stopped — `dispatch()` returns `false` with a built Response
+
+The middleware set the `Response` and returned `false`. The `Dispatcher` **sent** that response.
+
+```php
 if (!$ok && $dispatcher->error() === 401) {
     // The 401 response was already sent by the middleware
 }
-Important: in this case, the ErrorHandler is not invoked. The middleware is responsible for the response.
+```
 
-3. Routing Error — dispatch() returns false with an error code
-The route/method/controller was not found. The Dispatcher did not send anything. The caller (via ErrorHandler) must handle it.
+**Important:** in this case, the `ErrorHandler` is **not** invoked. The middleware is responsible for the response.
 
-Error	error()	Meaning
-Route not found	404	No route matches the path
-Method not allowed	405	Path exists, but the HTTP method is wrong
-Controller not found	400	Handler is invalid
-Method missing	405	Method doesn't exist on the controller
-Summary Table
-Situation	dispatch()	error()	Sent?	Handler used?
-Route OK	true	null	✅	❌
-Middleware stopped	false	401/403/302	✅	❌
-Route not found	false	404	❌	✅
-Controller invalid	false	400	❌	✅
-Method missing	false	405	❌	✅
-Exception	—	—	❌	✅ (via catch)
-Status Code Reference
+### 3. Routing Error — `dispatch()` returns `false` with an error code
+
+The route/method/controller was not found. The `Dispatcher` **did not send** anything. The caller (via `ErrorHandler`) must handle it.
+
+| Error | `error()` | Meaning |
+|-------|-----------|---------|
+| Route not found | `404` | No route matches the path |
+| Method not allowed | `405` | Path exists, but the HTTP method is wrong |
+| Controller not found | `400` | Handler is invalid |
+| Method missing | `405` | Method doesn't exist on the controller |
+
+### Summary Table
+
+| Situation | `dispatch()` | `error()` | Sent? | Handler used? |
+|-----------|--------------|-----------|-------|---------------|
+| Route OK | `true` | `null` | ✅ | ❌ |
+| Middleware stopped | `false` | `401`/`403`/`302` | ✅ | ❌ |
+| Route not found | `false` | `404` | ❌ | ✅ |
+| Controller invalid | `false` | `400` | ❌ | ✅ |
+| Method missing | `false` | `405` | ❌ | ✅ |
+| Exception | — | — | ❌ | ✅ (via `catch`) |
+
+---
+
+## Status Code Reference
+
 The Router uses standard HTTP status codes:
 
-Code	Meaning	Set by
-200	OK	Default
-201	Created	Controller
-204	No Content	Controller
-301	Moved Permanently	redirect(..., 301)
-302	Found (temp redirect)	redirect() / back()
-400	Bad Request	Router (controller not found)
-401	Unauthorized	Middleware
-403	Forbidden	Middleware
-404	Not Found	Router
-405	Method Not Allowed	Router
-419	Session Expired	App (CSRF)
-429	Too Many Requests	Middleware
-500	Internal Server Error	App (catch)
-501	Not Implemented	Router
-503	Service Unavailable	App (catch)
-Dispatcher Constants
-php
+| Code | Meaning | Set by |
+|------|---------|--------|
+| `200` | OK | Default |
+| `201` | Created | Controller |
+| `204` | No Content | Controller |
+| `301` | Moved Permanently | `redirect(..., 301)` |
+| `302` | Found (temp redirect) | `redirect()` / `back()` |
+| `400` | Bad Request | Router (controller not found) |
+| `401` | Unauthorized | Middleware |
+| `403` | Forbidden | Middleware |
+| `404` | Not Found | Router |
+| `405` | Method Not Allowed | Router |
+| `419` | Session Expired | App (CSRF) |
+| `429` | Too Many Requests | Middleware |
+| `500` | Internal Server Error | App (`catch`) |
+| `501` | Not Implemented | Router |
+| `503` | Service Unavailable | App (`catch`) |
+
+### Dispatcher Constants
+
+```php
 Dispatcher::BAD_REQUEST;          // 400
 Dispatcher::UNAUTHORIZED;         // 401
 Dispatcher::FORBIDDEN;            // 403
@@ -355,22 +417,26 @@ Dispatcher::NOT_FOUND;            // 404
 Dispatcher::METHOD_NOT_ALLOWED;   // 405
 Dispatcher::SERVER_ERROR;         // 500
 Dispatcher::NOT_IMPLEMENTED;      // 501
-Exceptions
-The Router does not catch exceptions. Exceptions are the application's responsibility.
+```
 
-Why?
+---
+
+## Exceptions
+
+The Router **does not catch exceptions**. Exceptions are the application's responsibility.
+
+### Why?
+
 Because the Router can't know:
 
-What to log (domain-specific)
+- What to log (domain-specific)
+- Where to log (file, Sentry, CloudWatch...)
+- What status to use (500? 503?)
+- How to render (HTML? JSON?)
 
-Where to log (file, Sentry, CloudWatch...)
+### Handling in `index.php`
 
-What status to use (500? 503?)
-
-How to render (HTML? JSON?)
-
-Handling in index.php
-php
+```php
 try {
     $ok = $dispatcher->dispatch();
     // ...
@@ -384,20 +450,26 @@ try {
     $logger->channel('app')->critical('Unexpected error', ['exception' => $e]);
     $errorHandler->handle(500, $request, $response)->send();
 }
-Common Exception Types
-Exception	Status	Meaning
-InvalidArgumentException	400	Bad input
-AuthenticationException	401	Auth failed
-AuthorizationException	403	Not allowed
-ModelNotFoundException	404	Resource not found
-ValidationException	422	Validation failed
-DatabaseConnectionException	503	DB unreachable
-DatabaseException	503	Query error
-\Throwable	500	Any other error
-Wrap in try/catch
+```
+
+### Common Exception Types
+
+| Exception | Status | Meaning |
+|-----------|--------|---------|
+| `InvalidArgumentException` | 400 | Bad input |
+| `AuthenticationException` | 401 | Auth failed |
+| `AuthorizationException` | 403 | Not allowed |
+| `ModelNotFoundException` | 404 | Resource not found |
+| `ValidationException` | 422 | Validation failed |
+| `DatabaseConnectionException` | 503 | DB unreachable |
+| `DatabaseException` | 503 | Query error |
+| `\Throwable` | 500 | Any other error |
+
+### Wrap in `try/catch`
+
 The safest pattern:
 
-php
+```php
 $dispatcher = null;
 
 try {
@@ -409,11 +481,17 @@ try {
     $response = $dispatcher?->getResponse() ?? new Response();
     $errorHandler->handle(500, $request, $response)->send();
 }
-Note: $dispatcher may be null if the exception happened before it was created.
+```
 
-Common Patterns
-JSON vs HTML
-php
+**Note:** `$dispatcher` may be `null` if the exception happened **before** it was created.
+
+---
+
+## Common Patterns
+
+### JSON vs HTML
+
+```php
 public function handle(int $status, Request $request, Response $response): Response
 {
     if ($request->expectsJson()) {
@@ -422,14 +500,20 @@ public function handle(int $status, Request $request, Response $response): Respo
 
     return $response->html("<h1>Error {$status}</h1>", $status);
 }
-Context-Aware Views
-php
+```
+
+### Context-Aware Views
+
+```php
 $context = $request->route()?->getAttribute('context') ?? 'ecommerce';
 $view = "{$context}/errors/{$status}";
 
 return $response->html($this->view->render($view), $status);
-Localized Messages
-php
+```
+
+### Localized Messages
+
+```php
 private function message(int $status): string
 {
     return match ($status) {
@@ -438,8 +522,11 @@ private function message(int $status): string
         default => __('errors.generic'),
     };
 }
-Fallback View
-php
+```
+
+### Fallback View
+
+```php
 $context = $request->route()?->getAttribute('context') ?? 'ecommerce';
 $candidates = [
     "{$context}/errors/{$status}",
@@ -455,8 +542,11 @@ foreach ($candidates as $view) {
 
 // Last resort: inline HTML
 return $response->html("<h1>{$status}</h1>", $status);
-Logging in the Handler
-php
+```
+
+### Logging in the Handler
+
+```php
 public function handle(int $status, Request $request, Response $response): Response
 {
     if ($status >= 500) {
@@ -468,63 +558,81 @@ public function handle(int $status, Request $request, Response $response): Respo
 
     // ... build response ...
 }
-Common Errors
-ErrorHandlerInterface Not Registered
-Symptom: the fallback DefaultErrorHandler is used instead of your custom handler.
+```
 
-Cause: the interface isn't bound in the container.
+---
 
-Fix:
+## Common Errors
 
-php
+### `ErrorHandlerInterface` Not Registered
+
+**Symptom:** the fallback `DefaultErrorHandler` is used instead of your custom handler.
+
+**Cause:** the interface isn't bound in the container.
+
+**Fix:**
+
+```php
 $container->singleton(ErrorHandlerInterface::class, function ($c) {
     return new AppErrorHandler($c->get(View::class));
 });
-Custom Handler Not Called
-Symptom: errors show the default text (English) instead of your custom view.
+```
 
-Cause: the index.php uses new DefaultErrorHandler() directly, ignoring the container.
+### Custom Handler Not Called
 
-Fix:
+**Symptom:** errors show the default text (English) instead of your custom view.
 
-php
+**Cause:** the `index.php` uses `new DefaultErrorHandler()` directly, ignoring the container.
+
+**Fix:**
+
+```php
 $errorHandler = $container->has(ErrorHandlerInterface::class)
     ? $container->get(ErrorHandlerInterface::class)
     : new DefaultErrorHandler();
-500 Not Caught
-Symptom: an exception is thrown in a controller, but the error page is not shown.
+```
 
-Cause: the try/catch in index.php is missing or doesn't cover the exception type.
+### 500 Not Caught
 
-Fix:
+**Symptom:** an exception is thrown in a controller, but the error page is not shown.
 
-php
+**Cause:** the `try/catch` in `index.php` is missing or doesn't cover the exception type.
+
+**Fix:**
+
+```php
 try {
     // ...
 } catch (\Throwable $e) {
     $errorHandler->handle(500, ...)->send();
 }
-Error Handler send() Called Twice
-Symptom: output duplication.
+```
 
-Cause: the send() method is called both inside the handler and again after.
+### Error Handler `send()` Called Twice
 
-Fix: send() is idempotent — the second call is a no-op. But check your flow. The handler should return the Response, not send it.
+**Symptom:** output duplication.
 
-Error View Not Found
-Symptom: TemplateNotFoundException when the handler tries to render.
+**Cause:** the `send()` method is called both inside the handler and again after.
 
-Cause: the view file doesn't exist for that status/context.
+**Fix:** `send()` is **idempotent** — the second call is a no-op. But check your flow. The handler should **return** the Response, not send it.
 
-Fix: add a fallback chain (see Fallback View).
+### Error View Not Found
 
-See Also
-Request — expectsJson(), route(), getAttribute()
+**Symptom:** `TemplateNotFoundException` when the handler tries to render.
 
-Response — building error responses
+**Cause:** the view file doesn't exist for that status/context.
 
-Middleware — 401/403 patterns
+**Fix:** add a fallback chain (see [Fallback View](#fallback-view)).
 
-Container — registering the handler
+---
 
-← Back to README | 🇵🇹 Português
+## See Also
+
+- [Request](request.md) — `expectsJson()`, `route()`, `getAttribute()`
+- [Response](response.md) — building error responses
+- [Middleware](middleware.md) — 401/403 patterns
+- [Container](container.md) — registering the handler
+
+---
+
+[← Back to README](../../README.md) | [🇵🇹 Português](../pt/error-handling.md)

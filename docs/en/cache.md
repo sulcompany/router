@@ -1,75 +1,80 @@
-Route Cache
-← Back to README | 🇵🇹 Português
+# Route Cache
 
-The Router can compile routes once and load them from a PHP file on every subsequent request. This dramatically reduces CPU usage by skipping regex compilation and route registration.
+[← Back to README](../../README.md) | [🇵🇹 Português](../pt/cache.md)
 
-Table of Contents
-Overview
+The Router can **compile routes once** and load them from a **PHP file** on every subsequent request. This dramatically reduces CPU usage by skipping regex compilation and route registration.
 
-When to Use
+---
 
-How It Works
+## Table of Contents
 
-Setup
+- [Overview](#overview)
+- [When to Use](#when-to-use)
+- [How It Works](#how-it-works)
+- [Setup](#setup)
+- [Cache Methods](#cache-methods)
+- [What Is Cached](#what-is-cached)
+- [What Is Not Cached](#what-is-not-cached)
+- [Invalidating the Cache](#invalidating-the-cache)
+- [Cache File Format](#cache-file-format)
+- [Common Patterns](#common-patterns)
+- [Common Errors](#common-errors)
 
-Cache Methods
+---
 
-What Is Cached
+## Overview
 
-What Is Not Cached
+Route compilation (turning `/user/{id}` into a regex) is **cheap**, but on every request it adds up. The cache:
 
-Invalidating the Cache
+1. Compiles all routes once
+2. Serializes them to a PHP file
+3. On subsequent requests, loads the file directly
 
-Cache File Format
+### Performance Impact
 
-Common Patterns
+| Setup | Routes | Time (approx.) |
+|-------|--------|---------------|
+| No cache, 100 routes | 100 | ~5-15 ms |
+| With cache, 100 routes | 100 | ~0.5-2 ms |
 
-Common Errors
+**Real numbers vary**, but the cache typically saves **70-90%** of route-matching overhead for large apps.
 
-Overview
-Route compilation (turning /user/{id} into a regex) is cheap, but on every request it adds up. The cache:
+### What "Compiling" Means
 
-Compiles all routes once
+For each dynamic route (`/user/{id}`), the Router builds a **regex**:
 
-Serializes them to a PHP file
-
-On subsequent requests, loads the file directly
-
-Performance Impact
-Setup	Routes	Time (approx.)
-No cache, 100 routes	100	~5-15 ms
-With cache, 100 routes	100	~0.5-2 ms
-Real numbers vary, but the cache typically saves 70-90% of route-matching overhead for large apps.
-
-What "Compiling" Means
-For each dynamic route (/user/{id}), the Router builds a regex:
-
-text
+```
 /user/{id}  →  ~^/user/([^/]+)$~
+```
+
 This is done once per route. The cache stores the compiled regex, so the next request doesn't need to rebuild it.
 
-When to Use
-Use the cache when:
-✅ You have many routes (>50)
+---
 
-✅ Your app runs in production
+## When to Use
 
-✅ Routes rarely change
+### Use the cache when:
 
-✅ You want maximum performance
+- ✅ You have **many routes** (>50)
+- ✅ Your app runs in **production**
+- ✅ Routes **rarely change**
+- ✅ You want **maximum performance**
 
-Skip the cache when:
-❌ You're developing (routes change constantly)
+### Skip the cache when:
 
-❌ You have few routes (<20)
+- ❌ You're **developing** (routes change constantly)
+- ❌ You have **few routes** (<20)
+- ❌ You **deploy frequently** (extra step)
 
-❌ You deploy frequently (extra step)
+**Recommendation:** enable in **production**, disable in **development**.
 
-Recommendation: enable in production, disable in development.
+---
 
-How It Works
-Request Flow Without Cache
-text
+## How It Works
+
+### Request Flow Without Cache
+
+```
 Request
   ↓
 Dispatcher created
@@ -77,8 +82,11 @@ Dispatcher created
 compile()       ← parses /user/{id} → regex
   ↓
 dispatch()
-Request Flow With Cache
-text
+```
+
+### Request Flow With Cache
+
+```
 Request
   ↓
 Dispatcher created
@@ -86,11 +94,17 @@ Dispatcher created
 loadCache()     ← loads precompiled routes from file
   ↓
 dispatch()
-If the cache file doesn't exist, the Router falls back to compile() and writes the cache.
+```
 
-Setup
-Basic Setup
-php
+If the cache file **doesn't exist**, the Router falls back to `compile()` and writes the cache.
+
+---
+
+## Setup
+
+### Basic Setup
+
+```php
 $router = new Router('https://mysite.com');
 
 $router->enableCache(__DIR__ . '/cache/routes.php');
@@ -108,8 +122,11 @@ if (!$router->loadCache()) {
 
 $dispatcher = new Dispatcher($router);
 $dispatcher->dispatch();
-With index.php
-php
+```
+
+### With `index.php`
+
+```php
 <?php
 
 declare(strict_types=1);
@@ -138,133 +155,184 @@ $dispatcher->dispatch();
 while (ob_get_level() > 0) {
     ob_end_flush();
 }
-Cache Methods
-enableCache(string $cacheFile): self
+```
+
+---
+
+## Cache Methods
+
+### `enableCache(string $cacheFile): self`
+
 Registers the cache file path and enables the cache.
 
-php
+```php
 $router->enableCache('/path/to/routes.php');
-The file doesn't need to exist yet — the Router creates it on the first cacheCompiledRoutes() call.
+```
 
-loadCache(): bool
+The file **doesn't need to exist yet** — the Router creates it on the first `cacheCompiledRoutes()` call.
+
+### `loadCache(): bool`
+
 Attempts to load the compiled routes from the cache file.
 
-Return	Meaning
-true	Cache loaded successfully — routes are ready
-false	Cache not enabled, file missing, or invalid
-php
+| Return | Meaning |
+|--------|---------|
+| `true` | Cache loaded successfully — routes are ready |
+| `false` | Cache not enabled, file missing, or invalid |
+
+```php
 if (!$router->loadCache()) {
     // register routes
 }
-compile(): void
+```
+
+### `compile(): void`
+
 Compiles routes into lookup structures (static hash + dynamic regex list).
 
-Idempotent: calling compile() twice does nothing the second time (if already compiled).
+**Idempotent:** calling `compile()` twice does nothing the second time (if already compiled).
 
-cacheCompiledRoutes(): void
+### `cacheCompiledRoutes(): void`
+
 Writes the compiled routes to the cache file.
 
-php
+```php
 $router->compile();
 $router->cacheCompiledRoutes();
-Note: compile() is called automatically by cacheCompiledRoutes() if routes aren't compiled yet.
+```
 
-Method Summary
-Method	Purpose
-enableCache($file)	Enables the cache
-loadCache()	Loads from cache
-compile()	Compiles routes
-cacheCompiledRoutes()	Writes the cache
-What Is Cached
-The cache file contains all routes with:
+**Note:** `compile()` is called automatically by `cacheCompiledRoutes()` if routes aren't compiled yet.
 
-Field	Cached?	Example
-method	✅	GET
-path	✅	/user/{id}
-handler	✅	UserController::class (string)
-action	✅	show
-name	✅	user.show
-middlewares	✅	[AuthMiddleware::class]
-regex	✅	~^/user/([^/]+)$~
-paramNames	✅	['id']
-attributes	✅	['context' => 'admin']
-Route Names Index
-The nameIndex is also cached:
+### Method Summary
 
-php
+| Method | Purpose |
+|--------|---------|
+| `enableCache($file)` | Enables the cache |
+| `loadCache()` | Loads from cache |
+| `compile()` | Compiles routes |
+| `cacheCompiledRoutes()` | Writes the cache |
+
+---
+
+## What Is Cached
+
+The cache file contains **all routes** with:
+
+| Field | Cached? | Example |
+|-------|---------|---------|
+| `method` | ✅ | `GET` |
+| `path` | ✅ | `/user/{id}` |
+| `handler` | ✅ | `UserController::class` (string) |
+| `action` | ✅ | `show` |
+| `name` | ✅ | `user.show` |
+| `middlewares` | ✅ | `[AuthMiddleware::class]` |
+| `regex` | ✅ | `~^/user/([^/]+)$~` |
+| `paramNames` | ✅ | `['id']` |
+| `attributes` | ✅ | `['context' => 'admin']` |
+
+### Route Names Index
+
+The `nameIndex` is also cached:
+
+```php
 [
     'user.show' => ['method' => 'GET', 'path' => '/user/{id}'],
     // ...
 ]
-Used by urlFor().
+```
 
-Custom Attributes
-Any attributes you set on a route via setAttribute() are preserved across cache loads.
+Used by `urlFor()`.
 
-php
+### Custom Attributes
+
+Any attributes you set on a route via `setAttribute()` are preserved across cache loads.
+
+```php
 $route->setAttribute('context', 'admin');
 $route->setAttribute('version', 'v2');
 // Both survive cache → load → dispatch
-What Is Not Cached
-1. Closure Handlers
-Routes with closure handlers are skipped in the cache.
+```
 
-php
+---
+
+## What Is Not Cached
+
+### 1. Closure Handlers
+
+Routes with **closure handlers** are **skipped** in the cache.
+
+```php
 $router->get('/health', function ($req, $res) {
     return $res->json(['status' => 'ok']);
 });
 // ❌ Not cached — closures can't be serialized
-Why: var_export() cannot serialize Closure objects.
+```
 
-Impact: on every request, closure routes must be registered even with cache enabled.
+**Why:** `var_export()` cannot serialize `Closure` objects.
 
-2. Services
-The cache does not store container services. Only routes.
+**Impact:** on every request, closure routes must be registered **even with cache enabled**.
 
-3. Config
-The projectUrl is not cached. It's set on new Router(...).
+### 2. Services
 
-Summary
-Item	Cached?
-Static routes	✅
-Dynamic routes	✅
-Name index	✅
-Attributes	✅
-Closure handlers	❌
-Container services	❌
-Config	❌
-Invalidating the Cache
-The cache does not auto-invalidate. You must delete or regenerate it when:
+The cache **does not** store container services. Only routes.
 
-Adding a new route
+### 3. Config
 
-Removing a route
+The `projectUrl` is **not** cached. It's set on `new Router(...)`.
 
-Changing a route's path, name, or handler
+### Summary
 
-Changing a middleware on a route
+| Item | Cached? |
+|------|---------|
+| Static routes | ✅ |
+| Dynamic routes | ✅ |
+| Name index | ✅ |
+| Attributes | ✅ |
+| Closure handlers | ❌ |
+| Container services | ❌ |
+| Config | ❌ |
 
-Manual Deletion
-bash
+---
+
+## Invalidating the Cache
+
+The cache **does not auto-invalidate**. You must delete or regenerate it when:
+
+- Adding a new route
+- Removing a route
+- Changing a route's path, name, or handler
+- Changing a middleware on a route
+
+### Manual Deletion
+
+```bash
 rm storage/cache/routes.php
-The next request triggers loadCache() → returns false → recompiles.
+```
 
-Regenerate on Deploy
+The next request triggers `loadCache()` → returns `false` → recompiles.
+
+### Regenerate on Deploy
+
 In your deploy script:
 
-bash
+```bash
 # After pulling new code
 rm -f storage/cache/routes.php
+```
+
 Or:
 
-bash
+```bash
 php bin/compile-routes.php
-Where bin/compile-routes.php registers all routes and calls cacheCompiledRoutes().
+```
 
-Dev Workflow
-During development, disable the cache:
+Where `bin/compile-routes.php` registers all routes and calls `cacheCompiledRoutes()`.
 
-php
+### Dev Workflow
+
+During development, **disable the cache**:
+
+```php
 $router->enableCache(__DIR__ . '/../storage/cache/routes.php');
 
 if (getenv('APP_ENV') !== 'production' || !$router->loadCache()) {
@@ -275,16 +343,20 @@ if (getenv('APP_ENV') !== 'production' || !$router->loadCache()) {
         $router->cacheCompiledRoutes();
     }
 }
+```
+
 This way:
 
-Dev: always recompiles (no stale cache)
+- **Dev:** always recompiles (no stale cache)
+- **Prod:** loads from cache
 
-Prod: loads from cache
+---
 
-Cache File Format
+## Cache File Format
+
 The cache file is a PHP file returning a structured array:
 
-php
+```php
 <?php
 
 return [
@@ -321,21 +393,29 @@ return [
         // ...
     ],
 ];
-Structure
-Key	Contents
-static	Static routes grouped by HTTP method
-dynamic	Dynamic routes (with regex) grouped by HTTP method
-names	Name index for urlFor()
-Why This Format?
-Plain PHP — fastest possible load (OPcache-friendly)
+```
 
-No unserialize() — safe from object injection
+### Structure
 
-Human-readable — you can inspect it
+| Key | Contents |
+|-----|----------|
+| `static` | Static routes grouped by HTTP method |
+| `dynamic` | Dynamic routes (with regex) grouped by HTTP method |
+| `names` | Name index for `urlFor()` |
 
-Common Patterns
-Development vs Production
-php
+### Why This Format?
+
+- **Plain PHP** — fastest possible load (OPcache-friendly)
+- **No `unserialize()`** — safe from object injection
+- **Human-readable** — you can inspect it
+
+---
+
+## Common Patterns
+
+### Development vs Production
+
+```php
 $isProd = ($_ENV['APP_ENV'] ?? 'development') === 'production';
 
 $router->enableCache(__DIR__ . '/../storage/cache/routes.php');
@@ -349,18 +429,24 @@ if (!$isProd || !$router->loadCache()) {
         $router->cacheCompiledRoutes();
     }
 }
-Cache Per Environment
+```
+
+### Cache Per Environment
+
 Different cache files for different environments:
 
-php
+```php
 $cacheFile = __DIR__ . "/../storage/cache/routes.{$_ENV['APP_ENV']}.php";
 $router->enableCache($cacheFile);
+```
+
 Avoids mixing dev and prod routes.
 
-Precompile on Deploy
-Create bin/compile-routes.php:
+### Precompile on Deploy
 
-php
+Create `bin/compile-routes.php`:
+
+```php
 <?php
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -372,14 +458,19 @@ $router->compile();
 $router->cacheCompiledRoutes();
 
 echo "Routes compiled to storage/cache/routes.php\n";
+```
+
 Run in your deploy:
 
-bash
+```bash
 php bin/compile-routes.php
-Cache Warmup
+```
+
+### Cache Warmup
+
 In your deploy pipeline:
 
-bash
+```bash
 # 1. Pull code
 git pull
 
@@ -391,51 +482,66 @@ php bin/compile-routes.php
 
 # 4. Restart PHP-FPM (optional, for OPcache)
 sudo systemctl reload php8.1-fpm
-Permission Notes
-The cache file needs write permissions during compilation:
+```
 
-bash
+### Permission Notes
+
+The cache file needs **write permissions** during compilation:
+
+```bash
 chmod -R 775 storage/cache
-If you run PHP-FPM as www-data:
+```
 
-bash
+If you run PHP-FPM as `www-data`:
+
+```bash
 chown -R www-data:www-data storage/cache
-Common Errors
-Cache Not Being Written
-Symptom: routes.php doesn't appear in storage/cache/.
+```
 
-Causes:
+---
 
-Directory doesn't exist — the Router creates it with mkdir($dir, 0777, true), but permissions may block
+## Common Errors
 
-Permission denied — the PHP process can't write
+### Cache Not Being Written
 
-cacheCompiledRoutes() not called — check your code
+**Symptom:** `routes.php` doesn't appear in `storage/cache/`.
 
-Fix:
+**Causes:**
 
-bash
+1. **Directory doesn't exist** — the Router creates it with `mkdir($dir, 0777, true)`, but permissions may block
+2. **Permission denied** — the PHP process can't write
+3. **`cacheCompiledRoutes()` not called** — check your code
+
+**Fix:**
+
+```bash
 mkdir -p storage/cache
 chmod -R 775 storage/cache
-Stale Cache After Adding Routes
-Symptom: new routes return 404 after deploy.
+```
 
-Cause: the cache file wasn't regenerated.
+### Stale Cache After Adding Routes
 
-Fix:
+**Symptom:** new routes return 404 after deploy.
 
-bash
+**Cause:** the cache file wasn't regenerated.
+
+**Fix:**
+
+```bash
 rm storage/cache/routes.php
-Or run php bin/compile-routes.php.
+```
 
-Closure Routes Missing After Cache
-Symptom: routes defined with closures work in dev but not in prod.
+Or run `php bin/compile-routes.php`.
 
-Cause: closures aren't cached. They must be registered on every request, even with the cache enabled.
+### Closure Routes Missing After Cache
 
-Fix: register closures outside the if (!$router->loadCache()) block:
+**Symptom:** routes defined with closures work in dev but not in prod.
 
-php
+**Cause:** closures aren't cached. They must be registered **on every request**, even with the cache enabled.
+
+**Fix:** register closures **outside** the `if (!$router->loadCache())` block:
+
+```php
 // Always register closures
 $router->get('/health', fn($req, $res) => $res->json(['ok' => true]));
 
@@ -445,32 +551,40 @@ if (!$router->loadCache()) {
     $router->compile();
     $router->cacheCompiledRoutes();
 }
-Cache Loaded But Routes Don't Match
-Symptom: loadCache() returns true, but requests 404.
+```
 
-Cause: you changed projectUrl and the compiled paths don't match.
+### Cache Loaded But Routes Don't Match
 
-Fix: delete and recompile.
+**Symptom:** `loadCache()` returns `true`, but requests 404.
 
-Invalid Cache File
-Symptom: ParseError or require failure on routes.php.
+**Cause:** you changed `projectUrl` and the compiled paths don't match.
 
-Cause: the file is corrupted (partial write, manual edit).
+**Fix:** delete and recompile.
 
-Fix: delete and recompile.
+### Invalid Cache File
 
-urlFor() Fails for a Named Route
-Symptom: InvalidArgumentException: Named route 'x' not found.
+**Symptom:** `ParseError` or `require` failure on `routes.php`.
 
-Cause: the route was added but the cache wasn't regenerated.
+**Cause:** the file is corrupted (partial write, manual edit).
 
-Fix: clear cache.
+**Fix:** delete and recompile.
 
-See Also
-Routes — route registration
+### `urlFor()` Fails for a Named Route
 
-Groups — grouped routes (cached like normal routes)
+**Symptom:** `InvalidArgumentException: Named route 'x' not found`.
 
-URL Generation — urlFor() uses the name index
+**Cause:** the route was added but the cache wasn't regenerated.
 
-← Back to README | 🇵🇹 Português
+**Fix:** clear cache.
+
+---
+
+## See Also
+
+- [Routes](routes.md) — route registration
+- [Groups](groups.md) — grouped routes (cached like normal routes)
+- [URL Generation](url-generation.md) — `urlFor()` uses the name index
+
+---
+
+[← Back to README](../../README.md) | [🇵🇹 Português](../pt/cache.md)

@@ -1,70 +1,68 @@
-Container (DI)
-← Voltar ao README | 🇺🇸 English
+# Container (DI)
 
-O Container é um container de injeção de dependências compatível com PSR-11, com autowiring. É opcional — o Router funciona sem ele.
+[← Voltar ao README](../../README.pt.md) | [🇺🇸 English](../en/container.md)
 
-Índice
-Visão Geral
+O `Container` é um container de injeção de dependências **compatível com PSR-11**, com autowiring. É **opcional** — o Router funciona sem ele.
 
-Instalação
+---
 
-API
+## Índice
 
-Registrando Serviços
+- [Visão Geral](#visão-geral)
+- [Instalação](#instalação)
+- [API](#api)
+- [Registrando Serviços](#registrando-serviços)
+- [Resolvendo Serviços](#resolvendo-serviços)
+- [Autowiring](#autowiring)
+- [`has()` Estrito](#has-estrito)
+- [Exceções](#exceções)
+- [Usando com o Router](#usando-com-o-router)
+- [Padrões Comuns](#padrões-comuns)
+- [Erros Comuns](#erros-comuns)
 
-Resolvendo Serviços
+---
 
-Autowiring
+## Visão Geral
 
-has() Estrito
+A classe `Container`:
 
-Exceções
+- Implementa `Psr\Container\ContainerInterface`
+- Suporta **bind** (transient), **singleton** (compartilhado) e **instance** (pré-construído)
+- Tem **autowiring** via reflection
+- Detecta **dependências circulares**
+- Lança **exceções PSR-11**
 
-Usando com o Router
+### Quando Usar
 
-Padrões Comuns
-
-Erros Comuns
-
-Visão Geral
-A classe Container:
-
-Implementa Psr\Container\ContainerInterface
-
-Suporta bind (transient), singleton (compartilhado) e instance (pré-construído)
-
-Tem autowiring via reflection
-
-Detecta dependências circulares
-
-Lança exceções PSR-11
-
-Quando Usar
 Use o container quando:
 
-Seus controllers têm dependências no construtor
-
-Você quer reutilizar serviços (DB, logger, cache)
-
-Você quer autowiring (resolver automaticamente parâmetros do construtor)
+- Seus controllers têm **dependências no construtor**
+- Você quer **reutilizar serviços** (DB, logger, cache)
+- Você quer **autowiring** (resolver automaticamente parâmetros do construtor)
 
 Pule o container quando:
 
-Seus controllers são sem estado (sem construtor)
+- Seus controllers são **sem estado** (sem construtor)
+- Você usa **closures** pra tudo
+- Você quer complexidade mínima
 
-Você usa closures pra tudo
+---
 
-Você quer complexidade mínima
+## Instalação
 
-Instalação
-O container está incluído no Router. Sem instalação extra.
+O container está **incluído** no Router. Sem instalação extra.
 
-bash
+```bash
 composer require sulcompany/router
-Requisito: psr/container ^2.0 (instalado automaticamente).
+```
 
-API
-php
+**Requisito:** `psr/container ^2.0` (instalado automaticamente).
+
+---
+
+## API
+
+```php
 namespace SulCompany\Router\DI;
 
 class Container implements ContainerInterface
@@ -75,110 +73,155 @@ class Container implements ContainerInterface
     public function get(string $id): mixed;
     public function has(string $id): bool;
 }
-Referência de Métodos
-Método	Descrição	Retorna
-bind($id, $concrete)	Registra uma definição transient	void
-singleton($id, $concrete)	Registra uma definição compartilhada	void
-instance($id, $instance)	Registra uma instância pré-construída	void
-get($id)	Resolve	mixed
-has($id)	Verifica se registrado	bool
-Registrando Serviços
-bind() — Transient
-Cada get() cria uma nova instância.
+```
 
-php
+### Referência de Métodos
+
+| Método | Descrição | Retorna |
+|--------|-----------|---------|
+| `bind($id, $concrete)` | Registra uma definição **transient** | `void` |
+| `singleton($id, $concrete)` | Registra uma definição **compartilhada** | `void` |
+| `instance($id, $instance)` | Registra uma **instância pré-construída** | `void` |
+| `get($id)` | Resolve | `mixed` |
+| `has($id)` | Verifica se registrado | `bool` |
+
+---
+
+## Registrando Serviços
+
+### `bind()` — Transient
+
+Cada `get()` cria uma **nova instância**.
+
+```php
 $container->bind(LoggerInterface::class, function ($c) {
     return new FileLogger('/var/log/app.log');
 });
-php
+```
+
+```php
 $a = $container->get(LoggerInterface::class);
 $b = $container->get(LoggerInterface::class);
 
 var_dump($a === $b);  // false
-Quando usar: serviços sem estado, objetos com escopo de requisição, coisas que não devem ser compartilhadas.
+```
 
-singleton() — Compartilhado
-O primeiro get() cria a instância, chamadas subsequentes retornam a mesma.
+**Quando usar:** serviços sem estado, objetos com escopo de requisição, coisas que não devem ser compartilhadas.
 
-php
+### `singleton()` — Compartilhado
+
+O primeiro `get()` cria a instância, chamadas subsequentes retornam a mesma.
+
+```php
 $container->singleton(PDO::class, function ($c) {
     return new PDO('mysql:host=localhost;dbname=app', 'user', 'pass');
 });
-php
+```
+
+```php
 $a = $container->get(PDO::class);
 $b = $container->get(PDO::class);
 
 var_dump($a === $b);  // true
-Quando usar: conexões de banco, loggers, config, caches, qualquer coisa cara.
+```
 
-instance() — Pré-construído
-Registra um objeto já criado.
+**Quando usar:** conexões de banco, loggers, config, caches, qualquer coisa cara.
 
-php
+### `instance()` — Pré-construído
+
+Registra um objeto **já criado**.
+
+```php
 $config = new Config([
     'db.host' => 'localhost',
     'app.env' => 'production',
 ]);
 
 $container->instance(Config::class, $config);
-php
+```
+
+```php
 $c = $container->get(Config::class);
 var_dump($c === $config);  // true
-Quando usar: objetos que você criou fora do container (arrays de config, clientes de terceiros).
+```
 
-Registrando uma Classe Diretamente
+**Quando usar:** objetos que você criou fora do container (arrays de config, clientes de terceiros).
+
+### Registrando uma Classe Diretamente
+
 Você pode registrar um objeto (não uma factory):
 
-php
+```php
 $container->singleton(SomeService::class, new SomeService());
-Mas isto instancia imediatamente, mesmo se nunca for usado. Prefira factories:
+```
 
-php
+Mas isto **instancia imediatamente**, mesmo se nunca for usado. Prefira factories:
+
+```php
 $container->singleton(SomeService::class, fn() => new SomeService());
-Assinatura de Closure
-Factories recebem o container como primeiro argumento:
+```
 
-php
+### Assinatura de Closure
+
+Factories recebem o container como **primeiro argumento**:
+
+```php
 $container->bind(UserRepository::class, function ($c) {
     return new UserRepository($c->get(PDO::class));
 });
-Resolvendo Serviços
-get(string $id): mixed
+```
+
+---
+
+## Resolvendo Serviços
+
+### `get(string $id): mixed`
+
 Resolve o serviço.
 
-php
+```php
 $logger = $container->get(LoggerInterface::class);
 $pdo = $container->get(PDO::class);
-Ordem de Resolução
-Instância pré-construída — se registrada via instance()
+```
 
-Definição — se registrada via bind() ou singleton()
+### Ordem de Resolução
 
-Autowiring — se $id é uma classe que pode ser instanciada
+1. **Instância pré-construída** — se registrada via `instance()`
+2. **Definição** — se registrada via `bind()` ou `singleton()`
+3. **Autowiring** — se `$id` é uma classe que pode ser instanciada
+4. **Exceção** — `NotFoundException` se nenhuma se aplica
 
-Exceção — NotFoundException se nenhuma se aplica
+### `has(string $id): bool`
 
-has(string $id): bool
-Verifica se o serviço está explicitamente registrado.
+Verifica se o serviço está **explicitamente registrado**.
 
-php
+```php
 $container->has(LoggerInterface::class);  // true (registrado)
 $container->has(\stdClass::class);        // false (não registrado)
-Importante: has() retorna true apenas para entradas registradas. Autowiring não conta. Veja has() Estrito.
+```
 
-Autowiring
-Se você chamar get() com uma classe não registrada, o container tenta resolvê-la via reflection.
+**Importante:** `has()` retorna `true` apenas para entradas **registradas**. Autowiring **não** conta. Veja [`has()` Estrito](#has-estrito).
 
-Regras
+---
+
+## Autowiring
+
+Se você chamar `get()` com uma classe **não registrada**, o container tenta resolvê-la via reflection.
+
+### Regras
+
 Para cada parâmetro do construtor:
 
-Parâmetro	Resolução
-Tem um tipo não-builtin e a classe existe	Resolve recursivamente
-Tem um valor default	Usa o default
-É nullable (sem default)	Usa null
-Caso contrário	Lança ContainerException
-Exemplo
-php
+| Parâmetro | Resolução |
+|-----------|-----------|
+| Tem um **tipo não-builtin** e a classe existe | Resolve recursivamente |
+| Tem um **valor default** | Usa o default |
+| É **nullable** (sem default) | Usa `null` |
+| Caso contrário | Lança `ContainerException` |
+
+### Exemplo
+
+```php
 class Mailer
 {
     public function __construct(
@@ -186,33 +229,41 @@ class Mailer
         private string $from = 'noreply@example.com'  // default
     ) {}
 }
-php
+```
+
+```php
 $container->singleton(LoggerInterface::class, fn() => new FileLogger('/tmp/log'));
 
 $mailer = $container->get(Mailer::class);
 // LoggerInterface resolvido, $from = "noreply@example.com"
-Autowiring é Transient
-Cada get() com autowiring cria uma nova instância:
+```
 
-php
+### Autowiring é Transient
+
+Cada `get()` com autowiring cria uma **nova instância**:
+
+```php
 $a = $container->get(Mailer::class);
 $b = $container->get(Mailer::class);
 
 var_dump($a === $b);  // false
-Para compartilhar, registre com singleton():
+```
 
-php
+Para compartilhar, registre com `singleton()`:
+
+```php
 $container->singleton(Mailer::class, fn($c) => new Mailer($c->get(LoggerInterface::class)));
-Quando Autowiring Falha
-Autowiring não consegue:
+```
 
-Instanciar interfaces ou classes abstratas
+### Quando Autowiring Falha
 
-Resolver parâmetros sem default e sem tipo
+Autowiring **não consegue**:
 
-Resolver tipos que não existem
+- Instanciar **interfaces** ou **classes abstratas**
+- Resolver parâmetros sem **default** e sem **tipo**
+- Resolver tipos que não existem
 
-php
+```php
 class Foo
 {
     public function __construct(private LoggerInterface $logger) {}
@@ -220,15 +271,20 @@ class Foo
 
 $container->get(Foo::class);
 // ❌ ContainerException: cannot resolve LoggerInterface
-Correção: registre a interface:
+```
 
-php
+**Correção:** registre a interface:
+
+```php
 $container->bind(LoggerInterface::class, fn() => new FileLogger('/tmp/log'));
 $container->get(Foo::class);  // ✅
-Tipos Builtin
-Tipos builtin (string, int, array, etc.) não são autowired — caem em defaults ou null:
+```
 
-php
+### Tipos Builtin
+
+Tipos builtin (`string`, `int`, `array`, etc.) **não** são autowired — caem em defaults ou `null`:
+
+```php
 class Config
 {
     public function __construct(private string $env) {}
@@ -236,37 +292,53 @@ class Config
 
 $container->get(Config::class);
 // ❌ ContainerException (sem default para $env)
-Correção: use bind() com uma factory.
+```
 
-has() Estrito
-has() retorna true apenas para entradas explicitamente registradas. Autowiring não conta.
+**Correção:** use `bind()` com uma factory.
 
-Exemplo
-php
+---
+
+## `has()` Estrito
+
+`has()` retorna `true` **apenas** para entradas explicitamente registradas. Autowiring **não** conta.
+
+### Exemplo
+
+```php
 class Foo { public function __construct() {} }
 
 $container->has(Foo::class);  // false (não registrado)
 $container->get(Foo::class);  // ✅ funciona (autowiring)
-Por Que Estrito?
-Porque has() responde "existe uma entrada para este id?" — não "pode ser resolvido?". Isto alinha com a semântica PSR-11.
+```
 
-Verificando Resolução
-Se você precisa verificar "isto pode ser resolvido?", use try/catch:
+### Por Que Estrito?
 
-php
+Porque `has()` responde *"existe uma entrada para este id?"* — não *"pode ser resolvido?"*. Isto alinha com a semântica PSR-11.
+
+### Verificando Resolução
+
+Se você precisa verificar *"isto pode ser resolvido?"*, use try/catch:
+
+```php
 try {
     $container->get(Foo::class);
     $canResolve = true;
 } catch (\Throwable) {
     $canResolve = false;
 }
-Exceções
+```
+
+---
+
+## Exceções
+
 O container lança dois tipos de exceção, ambos compatíveis com PSR-11.
 
-NotFoundException
-Lançada quando get() é chamado com um ID desconhecido.
+### `NotFoundException`
 
-php
+Lançada quando `get()` é chamado com um ID desconhecido.
+
+```php
 use SulCompany\Router\DI\Exceptions\NotFoundException;
 
 try {
@@ -274,12 +346,15 @@ try {
 } catch (NotFoundException $e) {
     echo "Serviço não encontrado: " . $e->getMessage();
 }
-Implementa Psr\Container\NotFoundExceptionInterface.
+```
 
-ContainerException
+Implementa `Psr\Container\NotFoundExceptionInterface`.
+
+### `ContainerException`
+
 Lançada quando a resolução falha (dependência circular, tipo inválido, etc.).
 
-php
+```php
 use SulCompany\Router\DI\Exceptions\ContainerException;
 
 try {
@@ -287,10 +362,13 @@ try {
 } catch (ContainerException $e) {
     echo "Não foi possível resolver: " . $e->getMessage();
 }
-Implementa Psr\Container\ContainerExceptionInterface.
+```
 
-Capturando Ambas
-php
+Implementa `Psr\Container\ContainerExceptionInterface`.
+
+### Capturando Ambas
+
+```php
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\NotFoundExceptionInterface;
 
@@ -301,19 +379,27 @@ try {
 } catch (ContainerExceptionInterface $e) {
     // falhou ao resolver
 }
-Dependência Circular
-php
+```
+
+### Dependência Circular
+
+```php
 class A { public function __construct(public B $b) {} }
 class B { public function __construct(public A $a) {} }
 
 $container->get(A::class);
 // ❌ ContainerException: Circular dependency detected
+```
+
 O container rastreia a pilha de resolução e recusa recursão.
 
-Usando com o Router
-Passe o container para o Dispatcher:
+---
 
-php
+## Usando com o Router
+
+Passe o container para o `Dispatcher`:
+
+```php
 use SulCompany\Router\DI\Container;
 use SulCompany\Router\Dispatcher;
 use SulCompany\Router\Router;
@@ -329,34 +415,45 @@ $router->get('/users', [UserController::class, 'index']);
 
 $dispatcher = new Dispatcher($router, $container);
 $dispatcher->dispatch();
-Resolução de Controller
-Quando o Dispatcher precisa instanciar um controller, ele:
+```
 
-Pergunta ao container: $container->has(UserController::class)
+### Resolução de Controller
 
-Se sim → $container->get(UserController::class)
+Quando o `Dispatcher` precisa instanciar um controller, ele:
 
-Se não → autowires via reflection
+1. Pergunta ao container: `$container->has(UserController::class)`
+2. Se sim → `$container->get(UserController::class)`
+3. Se não → autowires via reflection
 
-Dica: você não precisa registrar controllers — autowiring resolve.
+**Dica:** você não precisa registrar controllers — autowiring resolve.
 
-Resolução de Middleware
-Classes de middleware são resolvidas da mesma forma:
+### Resolução de Middleware
 
-php
+Classes de middleware são resolvidas **da mesma forma**:
+
+```php
 $router->addGlobalMiddleware(AuthMiddleware::class);
 // Resolvido via container → autowiring → DI do construtor
-Container Opcional
-O Router funciona sem um container:
+```
 
-php
+### Container Opcional
+
+O Router funciona **sem** um container:
+
+```php
 $dispatcher = new Dispatcher($router);
 $dispatcher->dispatch();
-Nesse caso, controllers e middleware são instanciados via reflection apenas (sem serviços compartilhados).
+```
 
-Padrões Comuns
-Conexão de Banco Singleton
-php
+Nesse caso, controllers e middleware são instanciados via **reflection apenas** (sem serviços compartilhados).
+
+---
+
+## Padrões Comuns
+
+### Conexão de Banco Singleton
+
+```php
 $container->singleton(PDO::class, function () {
     return new PDO(
         'mysql:host=localhost;dbname=app;charset=utf8mb4',
@@ -365,99 +462,137 @@ $container->singleton(PDO::class, function () {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 });
-Interface → Implementação
-php
-$container->bind(LoggerInterface::class, FileLogger::class);  // ❌ não funciona
-Nota: bind() espera um callable ou objeto, não uma class-string. Use uma factory:
+```
 
-php
+### Interface → Implementação
+
+```php
+$container->bind(LoggerInterface::class, FileLogger::class);  // ❌ não funciona
+```
+
+**Nota:** `bind()` espera um **callable** ou **objeto**, não uma class-string. Use uma factory:
+
+```php
 $container->bind(LoggerInterface::class, fn() => new FileLogger('/tmp/log'));
-Array de Config
-php
+```
+
+### Array de Config
+
+```php
 $config = new Config(require __DIR__ . '/../config/app.php');
 $container->instance(Config::class, $config);
-Repositório com Dependências
-php
+```
+
+### Repositório com Dependências
+
+```php
 $container->bind(UserRepository::class, function ($c) {
     return new UserRepository(
         $c->get(PDO::class),
         $c->get(LoggerInterface::class)
     );
 });
-Cache Compartilhado
-php
+```
+
+### Cache Compartilhado
+
+```php
 $container->singleton(CacheInterface::class, function () {
     return new RedisCache(new Redis('127.0.0.1'));
 });
-Isolamento em Testes
+```
+
+### Isolamento em Testes
+
 Em testes, sobrescreva serviços com mocks:
 
-php
+```php
 $container->instance(LoggerInterface::class, new NullLogger());
 $container->instance(PDO::class, $mockPdo);
-Erros Comuns
-NotFoundException
-Sintoma: Service or class 'X' not found.
+```
 
-Causa: o ID não está registrado, e não é uma classe.
+---
 
-Correção: registre-o:
+## Erros Comuns
 
-php
+### `NotFoundException`
+
+**Sintoma:** `Service or class 'X' not found.`
+
+**Causa:** o ID não está registrado, e não é uma classe.
+
+**Correção:** registre-o:
+
+```php
 $container->bind('X', fn() => new X());
+```
+
 Ou verifique erros de digitação.
 
-ContainerException — Não é Possível Resolver Parâmetro
-Sintoma: Cannot resolve parameter $foo in Bar.
+### `ContainerException` — Não é Possível Resolver Parâmetro
 
-Causa: $foo não tem default, não tem tipo, ou o tipo não pode ser resolvido.
+**Sintoma:** `Cannot resolve parameter $foo in Bar.`
 
-Correção: adicione um default, registre o tipo, ou use uma factory.
+**Causa:** `$foo` não tem default, não tem tipo, ou o tipo não pode ser resolvido.
 
-Dependência Circular
-Sintoma: Circular dependency detected.
+**Correção:** adicione um default, registre o tipo, ou use uma factory.
 
-Causa: A precisa de B, B precisa de A (direta ou indiretamente).
+### Dependência Circular
 
-Correção: quebre o ciclo com setter injection ou uma factory lazy.
+**Sintoma:** `Circular dependency detected.`
 
-php
+**Causa:** `A` precisa de `B`, `B` precisa de `A` (direta ou indiretamente).
+
+**Correção:** quebre o ciclo com **setter injection** ou uma **factory lazy**.
+
+```php
 class A
 {
     public function __construct(private LazyB $b) {}
 }
-bind() Não Aceita Class Strings
-Sintoma: TypeError: bind(): Argument #2 must be of type callable|object.
+```
 
-Causa: você passou UserRepository::class (uma string).
+### `bind()` Não Aceita Class Strings
 
-Correção:
+**Sintoma:** `TypeError: bind(): Argument #2 must be of type callable|object.`
 
-php
+**Causa:** você passou `UserRepository::class` (uma string).
+
+**Correção:**
+
+```php
 $container->bind(UserRepository::class, fn($c) => new UserRepository($c->get(PDO::class)));
-Autowiring Instancia Novos Objetos
-Sintoma: get(SomeService::class) retorna uma nova instância toda vez.
+```
 
-Causa: autowiring é transient.
+### Autowiring Instancia Novos Objetos
 
-Correção: registre como singleton:
+**Sintoma:** `get(SomeService::class)` retorna uma nova instância toda vez.
 
-php
+**Causa:** autowiring é transient.
+
+**Correção:** registre como singleton:
+
+```php
 $container->singleton(SomeService::class, fn() => new SomeService());
-has() Retorna false para Classes Autowireable
-Sintoma: $container->has(Foo::class) é false, mas get(Foo::class) funciona.
+```
 
-Causa: por design — has() é estrito.
+### `has()` Retorna `false` para Classes Autowireable
 
-Correção: use get() dentro de try/catch se precisar de "pode resolver?".
+**Sintoma:** `$container->has(Foo::class)` é `false`, mas `get(Foo::class)` funciona.
 
-Veja Também
-Controllers — DI em controllers
+**Causa:** por design — `has()` é estrito.
 
-Middleware — DI em middleware
+**Correção:** use `get()` dentro de try/catch se precisar de "pode resolver?".
 
-Tratamento de Erros — registrando o error handler
+---
 
-PSR-11 — especificação oficial
+## Veja Também
 
-← Voltar ao README | 🇺🇸 English
+- [Controllers](controllers.md) — DI em controllers
+- [Middleware](middleware.md) — DI em middleware
+- [Tratamento de Erros](error-handling.md) — registrando o error handler
+- [PSR-11](https://www.php-fig.org/psr/psr-11/) — especificação oficial
+
+---
+
+[← Voltar ao README](../../README.pt.md) | [🇺🇸 English](../en/container.md)

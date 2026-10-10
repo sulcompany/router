@@ -1,35 +1,32 @@
-Middleware
-← Voltar ao README | 🇺🇸 English
+# Middleware
 
-Middleware permite executar lógica antes e/ou depois do controller. Usos comuns: autenticação, autorização, logging, restauração de sessão, proteção CSRF, modificação de requisição.
+[← Voltar ao README](../../README.pt.md) | [🇺🇸 English](../en/middleware.md)
 
-Índice
-Estrutura
+Middleware permite executar lógica **antes** e/ou **depois** do controller. Usos comuns: autenticação, autorização, logging, restauração de sessão, proteção CSRF, modificação de requisição.
 
-before()
+---
 
-after()
+## Índice
 
-Registrando Middleware
+- [Estrutura](#estrutura)
+- [before()](#before)
+- [after()](#after)
+- [Registrando Middleware](#registrando-middleware)
+- [Tipos de Middleware](#tipos-de-middleware)
+- [Ordem de Execução](#ordem-de-execução)
+- [Interrompendo a Pipeline](#interrompendo-a-pipeline)
+- [Modificando a Response](#modificando-a-response)
+- [Injeção de Dependências](#injeção-de-dependências)
+- [Padrões Comuns](#padrões-comuns)
+- [Erros Comuns](#erros-comuns)
 
-Tipos de Middleware
+---
 
-Ordem de Execução
+## Estrutura
 
-Interrompendo a Pipeline
+Um middleware é uma **classe** com um método opcional `before()` e/ou `after()`.
 
-Modificando a Response
-
-Injeção de Dependências
-
-Padrões Comuns
-
-Erros Comuns
-
-Estrutura
-Um middleware é uma classe com um método opcional before() e/ou after().
-
-php
+```php
 namespace App\Http\Middleware;
 
 use SulCompany\Router\Request;
@@ -48,26 +45,36 @@ class AuthMiddleware
         // executa depois do controller
     }
 }
-Regras:
+```
 
-before() deve retornar bool
+**Regras:**
 
-after() retorna void
+- `before()` **deve retornar `bool`**
+- `after()` retorna `void`
+- Uma classe pode implementar **ambos**, **só um**, ou **nenhum** (ignorada)
 
-Uma classe pode implementar ambos, só um, ou nenhum (ignorada)
+---
 
-before()
-Executa antes do controller.
+## before()
 
-Assinatura
-php
+Executa **antes** do controller.
+
+### Assinatura
+
+```php
 public function before(Request $request, Response $response): bool;
-Valores de Retorno
-Retorno	Efeito
-true	Continua para o próximo middleware / controller
-false	Para a pipeline — nenhum controller roda
-Exemplo: Autenticação
-php
+```
+
+### Valores de Retorno
+
+| Retorno | Efeito |
+|---------|--------|
+| `true` | Continua para o próximo middleware / controller |
+| `false` | **Para** a pipeline — nenhum controller roda |
+
+### Exemplo: Autenticação
+
+```php
 final class AuthMiddleware
 {
     public function __construct(private AuthService $auth) {}
@@ -85,8 +92,11 @@ final class AuthMiddleware
         return true;  // continua
     }
 }
-Exemplo: Log de Requisições
-php
+```
+
+### Exemplo: Log de Requisições
+
+```php
 final class LogMiddleware
 {
     public function __construct(private LoggerInterface $logger) {}
@@ -101,8 +111,11 @@ final class LogMiddleware
         return true;
     }
 }
-Exemplo: Verificação CSRF (apenas POST)
-php
+```
+
+### Exemplo: Verificação CSRF (apenas POST)
+
+```php
 final class CsrfMiddleware
 {
     public function before(Request $request, Response $response): bool
@@ -121,17 +134,27 @@ final class CsrfMiddleware
         return true;
     }
 }
-after()
-Executa depois do controller.
+```
 
-Assinatura
-php
+---
+
+## after()
+
+Executa **depois** do controller.
+
+### Assinatura
+
+```php
 public function after(Request $request, Response $response): void;
-Valor de Retorno
-Nenhum (void). O after() não pode parar a pipeline.
+```
 
-Exemplo: Adicionar Header de Response
-php
+### Valor de Retorno
+
+Nenhum (void). O `after()` **não pode parar** a pipeline.
+
+### Exemplo: Adicionar Header de Response
+
+```php
 final class CorsMiddleware
 {
     public function after(Request $request, Response $response): void
@@ -140,8 +163,11 @@ final class CorsMiddleware
         $response->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE');
     }
 }
-Exemplo: Log de Response
-php
+```
+
+### Exemplo: Log de Response
+
+```php
 final class ResponseLogMiddleware
 {
     public function __construct(private LoggerInterface $logger) {}
@@ -154,8 +180,11 @@ final class ResponseLogMiddleware
         ]);
     }
 }
-Exemplo: Modificar HTML (injetar banner)
-php
+```
+
+### Exemplo: Modificar HTML (injetar banner)
+
+```php
 final class BannerMiddleware
 {
     public function after(Request $request, Response $response): void
@@ -168,67 +197,88 @@ final class BannerMiddleware
         }
     }
 }
-⚠️ Cuidado: after() roda depois do controller, mas antes do send(). Modificar o body aqui funciona.
+```
 
-Registrando Middleware
-Global
-Executa em toda requisição:
+> ⚠️ **Cuidado:** `after()` roda depois do controller, mas **antes** do `send()`. Modificar o body aqui funciona.
 
-php
+---
+
+## Registrando Middleware
+
+### Global
+
+Executa em **toda** requisição:
+
+```php
 $router->addGlobalMiddleware(SessionRestoreMiddleware::class);
+```
+
 Vários de uma vez:
 
-php
+```php
 $router->addGlobalMiddleware([
     SessionRestoreMiddleware::class,
     LogMiddleware::class,
 ]);
-Grupo
+```
+
+### Grupo
+
 Executa em todas as rotas do grupo:
 
-php
+```php
 $router->group('/admin', middleware: [AuthAdminMiddleware::class], callback: function ($r) {
     // ...
 });
-Rota
+```
+
+### Rota
+
 Executa apenas naquela rota:
 
-php
+```php
 $router->get('/admin/report', [ReportController::class, 'export'], middleware: [ReportPermissionMiddleware::class]);
-Combinado
+```
+
+### Combinado
+
 Os três se aplicam:
 
-php
+```php
 $router->addGlobalMiddleware(LogMiddleware::class);           // global
 
 $router->group('/admin', middleware: [AuthAdminMiddleware::class], callback: function ($r) {  // grupo
     $r->get('/report', [ReportController::class, 'export'], middleware: [ReportPermissionMiddleware::class]);  // rota
 });
-Execução:
+```
 
-Global before
+**Execução:**
 
-Grupo before
+1. Global before
+2. Grupo before
+3. Rota before
+4. Controller
+5. Rota after
+6. Grupo after
+7. Global after
 
-Rota before
+---
 
-Controller
+## Tipos de Middleware
 
-Rota after
+| Tipo | Registro | Escopo | Quando usar |
+|------|----------|--------|-------------|
+| **Global** | `addGlobalMiddleware()` | Toda requisição | Sessão, logging, CORS |
+| **Grupo** | `group(..., middleware: [...])` | Rotas do grupo | Auth para `/admin`, API key para `/api` |
+| **Rota** | `get(..., middleware: [...])` | Rota única | Permissões pontuais |
 
-Grupo after
+---
 
-Global after
+## Ordem de Execução
 
-Tipos de Middleware
-Tipo	Registro	Escopo	Quando usar
-Global	addGlobalMiddleware()	Toda requisição	Sessão, logging, CORS
-Grupo	group(..., middleware: [...])	Rotas do grupo	Auth para /admin, API key para /api
-Rota	get(..., middleware: [...])	Rota única	Permissões pontuais
-Ordem de Execução
-Middlewares rodam na ordem em que são registrados, em duas fases:
+Middlewares rodam **na ordem em que são registrados**, em duas fases:
 
-text
+```
 Requisição
   │
   ├─ Global before #1
@@ -244,12 +294,15 @@ Requisição
   └─ Global after #1    ← invertido
   │
 Resposta
-Regra chave: after() roda em ordem reversa.
+```
 
-Por Que Ordem Reversa?
-Porque after() serve para "desfazer" ou "finalizar" o que before() configurou. Exemplo:
+**Regra chave:** `after()` roda em **ordem reversa**.
 
-php
+### Por Que Ordem Reversa?
+
+Porque `after()` serve para "desfazer" ou "finalizar" o que `before()` configurou. Exemplo:
+
+```php
 class TimerMiddleware
 {
     private float $start;
@@ -257,24 +310,32 @@ class TimerMiddleware
     public function before(...): bool { $this->start = microtime(true); return true; }
     public function after(...): void  { /* duração = agora - $this->start */ }
 }
-Se você tem Timer envolvendo Auth, quer que Timer.after rode por último para medir o tempo total.
+```
 
-Interrupção Cancela after()
-Se um middleware retorna false do before(), nenhum after() roda — para nenhum middleware.
+Se você tem `Timer` envolvendo `Auth`, quer que `Timer.after` rode **por último** para medir o tempo total.
 
-text
+### Interrupção Cancela `after()`
+
+Se um middleware retorna `false` do `before()`, **nenhum `after()` roda** — para nenhum middleware.
+
+```
 Requisição
   │
   ├─ Global before #1 (true)
   ├─ Global before #2 (false) ← PARA AQUI
   │
   └─ Response (construída pelo #2)
-Nenhum after() é chamado.
+```
 
-Interrompendo a Pipeline
-Para parar a pipeline, retorne false do before() e defina uma Response.
+Nenhum `after()` é chamado.
 
-php
+---
+
+## Interrompendo a Pipeline
+
+Para parar a pipeline, retorne `false` do `before()` e **defina uma Response**.
+
+```php
 public function before(Request $request, Response $response): bool
 {
     if (!authorized()) {
@@ -283,51 +344,63 @@ public function before(Request $request, Response $response): bool
     }
     return true;
 }
-O Que o Dispatcher Faz
-Quando um middleware retorna false:
+```
 
-A pipeline para
+### O Que o Dispatcher Faz
 
-$dispatcher->error() é definido com o status da Response (ou 403 se vazio)
+Quando um middleware retorna `false`:
 
-A Response construída pelo middleware é enviada
+1. A pipeline **para**
+2. `$dispatcher->error()` é definido com o **status da Response** (ou `403` se vazio)
+3. A Response construída pelo middleware é **enviada**
+4. O controller **não roda**
 
-O controller não roda
+### Lendo o Status
 
-Lendo o Status
-php
+```php
 $ok = $dispatcher->dispatch();
 if (!$ok) {
     $status = $dispatcher->error();  // 403, 401, 302, ...
 }
-Múltiplos Builders de Response
-Você pode chamar ->status() e ->json()/->html() em qualquer ordem:
+```
 
-php
+### Múltiplos Builders de Response
+
+Você pode chamar `->status()` e `->json()`/`->html()` em qualquer ordem:
+
+```php
 $response
     ->status(403)
     ->header('X-Reason', 'no-permission')
     ->json(['error' => 'Forbidden']);
 return false;
-O Dispatcher lê getStatusCode() da Response.
+```
 
-Modificando a Response
-Você pode modificar a Response sem parar a pipeline:
+O `Dispatcher` lê `getStatusCode()` da Response.
 
-php
+---
+
+## Modificando a Response
+
+Você pode modificar a Response **sem parar** a pipeline:
+
+```php
 public function before(Request $request, Response $response): bool
 {
     $response->header('X-Request-Id', uniqid());
     return true;  // continua
 }
+```
+
 O header é preservado quando o controller retorna sua própria Response.
 
-⚠️ Importante: se o controller retornar uma nova Response, as mutações do $response injetado são perdidas.
+> ⚠️ **Importante:** se o controller **retornar** uma nova `Response`, as mutações do `$response` injetado são **perdidas**.
+>
+> Para preservar mutações, o controller deve **retornar o mesmo `$response`** (ou não retornar nada).
 
-Para preservar mutações, o controller deve retornar o mesmo $response (ou não retornar nada).
+### Padrão Seguro
 
-Padrão Seguro
-php
+```php
 // Middleware
 public function before(Request $request, Response $response): bool
 {
@@ -340,10 +413,15 @@ public function index(Response $response): Response
 {
     return $response->html('<h1>Olá</h1>');
 }
-Injeção de Dependências
-Construtores de middleware são resolvidos pelo container (ou autowiring).
+```
 
-php
+---
+
+## Injeção de Dependências
+
+Construtores de middleware são resolvidos pelo **container** (ou autowiring).
+
+```php
 final class AuthMiddleware
 {
     public function __construct(
@@ -357,13 +435,19 @@ final class AuthMiddleware
         return $this->auth->check();
     }
 }
-O Router instancia o middleware por requisição (não singleton) a menos que o container retorne uma instância compartilhada.
+```
 
-💡 Dica: para dependências compartilhadas (logger, DB), registre como singleton() no container.
+O Router instancia o middleware **por requisição** (não singleton) a menos que o container retorne uma instância compartilhada.
 
-Padrões Comuns
-Guard de Auth (API + HTML)
-php
+> 💡 **Dica:** para dependências compartilhadas (logger, DB), registre como `singleton()` no container.
+
+---
+
+## Padrões Comuns
+
+### Guard de Auth (API + HTML)
+
+```php
 final class AuthMiddleware
 {
     public function __construct(private AuthService $auth) {}
@@ -383,8 +467,11 @@ final class AuthMiddleware
         return false;
     }
 }
-Guard de Role
-php
+```
+
+### Guard de Role
+
+```php
 final class AdminMiddleware
 {
     public function __construct(private AuthService $auth) {}
@@ -398,8 +485,11 @@ final class AdminMiddleware
         return true;
     }
 }
-Restauração de Sessão
-php
+```
+
+### Restauração de Sessão
+
+```php
 final class SessionRestoreMiddleware
 {
     public function __construct(private Session $session) {}
@@ -415,8 +505,11 @@ final class SessionRestoreMiddleware
         $this->session->save();
     }
 }
-Rate Limit (simplificado)
-php
+```
+
+### Rate Limit (simplificado)
+
+```php
 final class RateLimitMiddleware
 {
     public function __construct(private RateLimiter $limiter) {}
@@ -436,8 +529,11 @@ final class RateLimitMiddleware
         return true;
     }
 }
-CORS
-php
+```
+
+### CORS
+
+```php
 final class CorsMiddleware
 {
     public function before(Request $request, Response $response): bool
@@ -454,8 +550,11 @@ final class CorsMiddleware
         return true;
     }
 }
-Modo de Manutenção
-php
+```
+
+### Modo de Manutenção
+
+```php
 final class MaintenanceMiddleware
 {
     public function __construct(private Config $config) {}
@@ -474,66 +573,79 @@ final class MaintenanceMiddleware
         return false;
     }
 }
-Erros Comuns
-Middleware Não Executa
-Sintoma: você registra um middleware mas ele não executa.
+```
 
-Causas possíveis:
+---
 
-Não registrado onde você pensa — verifique global/grupo/rota
+## Erros Comuns
 
-Typo no nome da classe — AuthMiddleware vs AuthMidleware (erro de digitação)
+### Middleware Não Executa
 
-Classe não autoloadável — verifique namespace
+**Sintoma:** você registra um middleware mas ele não executa.
 
-Valor de Retorno de before() Ignorado
-Sintoma: pipeline continua mesmo após return false.
+**Causas possíveis:**
 
-Causa: before() não retorna bool (retorna null ou nada).
+1. **Não registrado onde você pensa** — verifique global/grupo/rota
+2. **Typo no nome da classe** — `AuthMiddleware` vs `AuthMidleware` (erro de digitação)
+3. **Classe não autoloadável** — verifique namespace
 
-Correção:
+### Valor de Retorno de `before()` Ignorado
 
-php
+**Sintoma:** pipeline continua mesmo após `return false`.
+
+**Causa:** `before()` não retorna `bool` (retorna `null` ou nada).
+
+**Correção:**
+
+```php
 public function before(Request $request, Response $response): bool
 {
     // ...
     return true;  // ou false — DEVE retornar bool
 }
-Mutações de Response Perdidas
-Sintoma: headers definidos em before() não aparecem na response final.
+```
 
-Causa: o controller retorna uma nova Response em vez de mutar a injetada.
+### Mutações de Response Perdidas
 
-Correção (recomendada): controller deve return $response->... (a injetada).
+**Sintoma:** headers definidos em `before()` não aparecem na response final.
 
-php
+**Causa:** o controller retorna uma **nova Response** em vez de mutar a injetada.
+
+**Correção (recomendada):** controller deve `return $response->...` (a injetada).
+
+```php
 public function index(Response $response): Response
 {
     return $response->html('<h1>Olá</h1>');  // mesmo objeto
 }
-after() Não Executa
-Sintoma: after() não roda quando um before() retornou false.
+```
 
-Causa: por design — se a pipeline foi parada, nenhum after() roda.
+### `after()` Não Executa
 
-Correção: coloque lógica de limpeza no middleware que para a pipeline.
+**Sintoma:** `after()` não roda quando um `before()` retornou `false`.
 
-Middleware Sem before()
-Sintoma: classe apenas com after() não executa before().
+**Causa:** por design — se a pipeline foi parada, nenhum `after()` roda.
 
-Causa: por design — classes sem before() são ignoradas na fase before.
+**Correção:** coloque lógica de limpeza no middleware que **para** a pipeline.
 
-Correção: implemente before() (pode apenas return true).
+### Middleware Sem `before()`
 
-Veja Também
-Rotas — registrando rotas com middleware
+**Sintoma:** classe apenas com `after()` não executa `before()`.
 
-Grupos — middleware de grupo
+**Causa:** por design — classes sem `before()` são **ignoradas** na fase before.
 
-Controllers — valores de retorno de controller
+**Correção:** implemente `before()` (pode apenas `return true`).
 
-Tratamento de Erros — 401, 403, responses customizadas
+---
 
-Container — DI para middleware
+## Veja Também
 
-← Voltar ao README | 🇺🇸 English
+- [Rotas](routes.md) — registrando rotas com middleware
+- [Grupos](groups.md) — middleware de grupo
+- [Controllers](controllers.md) — valores de retorno de controller
+- [Tratamento de Erros](error-handling.md) — 401, 403, responses customizadas
+- [Container](container.md) — DI para middleware
+
+---
+
+[← Voltar ao README](../../README.pt.md) | [🇺🇸 English](../en/middleware.md)

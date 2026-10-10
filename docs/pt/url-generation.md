@@ -1,102 +1,120 @@
-Geração de URL
-← Voltar ao README | 🇺🇸 English
+# Geração de URL
 
-Gere URLs a partir de rotas nomeadas usando urlFor(). Isso desacopla sua aplicação de caminhos hardcoded — mude uma rota num só lugar, e todos os links se atualizam.
+[← Voltar ao README](../../README.pt.md) | [🇺🇸 English](../en/url-generation.md)
 
-Índice
-Visão Geral
+Gere URLs a partir de **rotas nomeadas** usando `urlFor()`. Isso desacopla sua aplicação de caminhos hardcoded — mude uma rota num só lugar, e todos os links se atualizam.
 
-Assinatura
+---
 
-Uso Básico
+## Índice
 
-Parâmetros de Rota
+- [Visão Geral](#visão-geral)
+- [Assinatura](#assinatura)
+- [Uso Básico](#uso-básico)
+- [Parâmetros de Rota](#parâmetros-de-rota)
+- [Wildcards](#wildcards)
+- [Query Strings](#query-strings)
+- [Rotas Nomeadas em Grupos](#rotas-nomeadas-em-grupos)
+- [Parâmetros Ausentes](#parâmetros-ausentes)
+- [Erros](#erros)
+- [Padrões Comuns](#padrões-comuns)
+- [Erros Comuns](#erros-comuns)
 
-Wildcards
+---
 
-Query Strings
+## Visão Geral
 
-Rotas Nomeadas em Grupos
+`urlFor()` constrói uma URL a partir de uma rota nomeada e um array de parâmetros.
 
-Parâmetros Ausentes
+### Por Que Usar
 
-Erros
+**Sem `urlFor()`:**
 
-Padrões Comuns
-
-Erros Comuns
-
-Visão Geral
-urlFor() constrói uma URL a partir de uma rota nomeada e um array de parâmetros.
-
-Por Que Usar
-Sem urlFor():
-
-php
+```php
 <a href="/user/<?= $user->id ?>">Perfil</a>
-Problemas:
+```
 
-Caminho hardcoded
+**Problemas:**
 
-Se /user/{id} virar /profile/{id}, você precisa atualizar cada link
+- Caminho hardcoded
+- Se `/user/{id}` virar `/profile/{id}`, você precisa atualizar cada link
+- Sem URL encoding
+- Sem tratamento de query string
 
-Sem URL encoding
+**Com `urlFor()`:**
 
-Sem tratamento de query string
-
-Com urlFor():
-
-php
+```php
 <a href="<?= $router->urlFor('user.show', ['id' => $user->id]) ?>">Perfil</a>
-Benefícios:
+```
 
-Fonte única de verdade
+**Benefícios:**
 
-URL encoding automático
+- Fonte única de verdade
+- URL encoding automático
+- Query strings tratadas
+- Nomes de rota navegáveis pela IDE
 
-Query strings tratadas
+---
 
-Nomes de rota navegáveis pela IDE
+## Assinatura
 
-Assinatura
-php
+```php
 public function urlFor(
     string $name,
     array $params = [],
     array $query = []
 ): string;
-Parâmetro	Tipo	Obrigatório	Descrição
-$name	string	✅	Nome da rota
-$params	array	❌	Parâmetros de caminho
-$query	array	❌	Parâmetros de query string
-Retorna: a URL completa, prefixada com o projectUrl.
+```
 
-Uso Básico
-php
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|-------------|-----------|
+| `$name` | `string` | ✅ | Nome da rota |
+| `$params` | `array` | ❌ | Parâmetros de caminho |
+| `$query` | `array` | ❌ | Parâmetros de query string |
+
+**Retorna:** a URL completa, prefixada com o `projectUrl`.
+
+---
+
+## Uso Básico
+
+```php
 $router->get('/about', [SiteController::class, 'about'], name: 'about');
 
 $url = $router->urlFor('about');
 // → https://meusite.com/about
-Nota: o projectUrl (passado para new Router(...)) é prependado.
+```
 
-php
+**Nota:** o `projectUrl` (passado para `new Router(...)`) é prependado.
+
+```php
 $router = new Router('https://meusite.com');
 $router->urlFor('about');  // https://meusite.com/about
-Se você passou 'https://meusite.com/app':
+```
 
-php
+Se você passou `'https://meusite.com/app'`:
+
+```php
 $router = new Router('https://meusite.com/app');
 $router->urlFor('about');  // https://meusite.com/app/about
-Parâmetros de Rota
+```
+
+---
+
+## Parâmetros de Rota
+
 Passe parâmetros como um array associativo:
 
-php
+```php
 $router->get('/user/{id}', [UserController::class, 'show'], name: 'user.show');
 
 $router->urlFor('user.show', ['id' => 42]);
 // → https://meusite.com/user/42
-Múltiplos Parâmetros
-php
+```
+
+### Múltiplos Parâmetros
+
+```php
 $router->get('/post/{slug}/comment/{id}', [CommentController::class, 'show'], name: 'comment.show');
 
 $router->urlFor('comment.show', [
@@ -104,72 +122,111 @@ $router->urlFor('comment.show', [
     'id'   => 7,
 ]);
 // → https://meusite.com/post/hello-world/comment/7
-Ordem de Parâmetros Não Importa
-php
+```
+
+### Ordem de Parâmetros Não Importa
+
+```php
 $router->urlFor('comment.show', ['id' => 7, 'slug' => 'hello-world']);
 // → https://meusite.com/post/hello-world/comment/7
-O Router substitui placeholders por nome, não por posição.
+```
 
-URL Encoding
-Valores não são URL-encoded automaticamente por urlFor(). Codifique manualmente se necessário:
+O Router substitui placeholders por **nome**, não por posição.
 
-php
+### URL Encoding
+
+Valores **não** são URL-encoded automaticamente por `urlFor()`. Codifique manualmente se necessário:
+
+```php
 $router->urlFor('post.show', ['slug' => urlencode('hello world')]);
 // → https://meusite.com/post/hello+world
-Wildcards
-Parâmetros wildcard ({path*}) aceitam um array:
+```
 
-php
+---
+
+## Wildcards
+
+Parâmetros wildcard (`{path*}`) aceitam um **array**:
+
+```php
 $router->get('/files/{path*}', [FileController::class, 'download'], name: 'files.download');
 
 $router->urlFor('files.download', ['path' => ['docs', '2024', 'file.pdf']]);
 // → https://meusite.com/files/docs/2024/file.pdf
-Valor String
+```
+
+### Valor String
+
 Você pode passar uma string — é usada como está:
 
-php
+```php
 $router->urlFor('files.download', ['path' => 'docs/2024/file.pdf']);
 // → https://meusite.com/files/docs/2024/file.pdf
-Wildcard Vazio
+```
+
+### Wildcard Vazio
+
 Um array vazio produz nenhum segmento:
 
-php
+```php
 $router->urlFor('files.download', ['path' => []]);
 // → https://meusite.com/files/
-Query Strings
-Passe um terceiro argumento para parâmetros de query:
+```
 
-php
+---
+
+## Query Strings
+
+Passe um **terceiro argumento** para parâmetros de query:
+
+```php
 $router->urlFor('user.show', ['id' => 42], ['ref' => 'email']);
 // → https://meusite.com/user/42?ref=email
-Múltiplos Parâmetros de Query
-php
+```
+
+### Múltiplos Parâmetros de Query
+
+```php
 $router->urlFor('users.index', [], ['page' => 2, 'sort' => 'name']);
 // → https://meusite.com/users?page=2&sort=name
-Parâmetros de Query em Array
-php
+```
+
+### Parâmetros de Query em Array
+
+```php
 $router->urlFor('users.index', [], ['tags' => ['php', 'router']]);
 // → https://meusite.com/users?tags%5B0%5D=php&tags%5B1%5D=router
-Usa http_build_query() do PHP, então arrays são codificados no formato PHP.
+```
 
-Apenas Query, Sem Path
-php
+Usa `http_build_query()` do PHP, então arrays são codificados no formato PHP.
+
+### Apenas Query, Sem Path
+
+```php
 $router->get('/', [HomeController::class, 'index'], name: 'home');
 
 $router->urlFor('home', [], ['utm_source' => 'newsletter']);
 // → https://meusite.com/?utm_source=newsletter
-Rotas Nomeadas em Grupos
-Quando uma rota está dentro de um grupo com name, o prefixo é aplicado:
+```
 
-php
+---
+
+## Rotas Nomeadas em Grupos
+
+Quando uma rota está dentro de um grupo com `name`, o prefixo é aplicado:
+
+```php
 $router->group('/admin', name: 'admin', callback: function ($r) {
     $r->get('/users', [UserController::class, 'index'], name: 'users.index');
 });
 
 $router->urlFor('admin.users.index');
 // → https://meusite.com/admin/users
-Prefixos Aninhados
-php
+```
+
+### Prefixos Aninhados
+
+```php
 $router->group('/admin', name: 'admin', callback: function ($r) {
     $r->group('/users', name: 'users', callback: function ($r2) {
         $r2->get('/list', [UserController::class, 'index'], name: 'list');
@@ -178,60 +235,84 @@ $router->group('/admin', name: 'admin', callback: function ($r) {
 
 $router->urlFor('admin.users.list');
 // → https://meusite.com/admin/users/list
-Rotas Nomeadas com Parâmetros
-php
+```
+
+### Rotas Nomeadas com Parâmetros
+
+```php
 $router->group('/admin', name: 'admin', callback: function ($r) {
     $r->get('/users/{id}', [UserController::class, 'show'], name: 'users.show');
 });
 
 $router->urlFor('admin.users.show', ['id' => 42]);
 // → https://meusite.com/admin/users/42
-Parâmetros Ausentes
-Se uma rota tem parâmetros e você não os passa, o placeholder é removido:
+```
 
-php
+---
+
+## Parâmetros Ausentes
+
+Se uma rota tem parâmetros e você **não** os passa, o placeholder é **removido**:
+
+```php
 $router->get('/user/{id}', [UserController::class, 'show'], name: 'user.show');
 
 $router->urlFor('user.show');
 // → https://meusite.com/user/
-Comportamento: o placeholder {id} é removido da URL.
+```
 
-Nota: isso geralmente não é o que você quer — sempre passe os parâmetros obrigatórios.
+**Comportamento:** o placeholder `{id}` é removido da URL.
 
-O Que É Removido
+**Nota:** isso geralmente **não é o que você quer** — sempre passe os parâmetros obrigatórios.
+
+### O Que É Removido
+
 O Router usa esta regex para remover placeholders não substituídos:
 
-text
+```
 \{[a-zA-Z_][a-zA-Z0-9_-]*\*?\}
-Então tanto {id} quanto {path*} são removidos se não substituídos.
+```
 
-Erros
-Nome de Rota Desconhecido
-php
+Então tanto `{id}` quanto `{path*}` são removidos se não substituídos.
+
+---
+
+## Erros
+
+### Nome de Rota Desconhecido
+
+```php
 $router->urlFor('nonexistent');
 // ❌ InvalidArgumentException: Named route 'nonexistent' not found.
-Causa: o nome não existe no registro de rotas.
+```
 
-Razões comuns:
+**Causa:** o nome não existe no registro de rotas.
 
-Typo — users.show vs user.show
+**Razões comuns:**
 
-Rota não registrada — a rota está atrás de um condicional
+1. **Typo** — `users.show` vs `user.show`
+2. **Rota não registrada** — a rota está atrás de um condicional
+3. **Cache não regenerado** — após adicionar uma rota, limpe o cache
 
-Cache não regenerado — após adicionar uma rota, limpe o cache
+### Rota Não Está no `nameIndex`
 
-Rota Não Está no nameIndex
-Se uma rota não tem nome (você não passou name:), ela não está no índice:
+Se uma rota **não tem nome** (você não passou `name:`), ela não está no índice:
 
-php
+```php
 $router->get('/about', [SiteController::class, 'about']);  // sem nome
 
 $router->urlFor('about');  // ❌ não encontrado
-Correção: sempre dê nome às rotas quando planeja gerar URLs.
+```
 
-Padrões Comuns
-Links RESTful de Recurso
-php
+**Correção:** sempre dê nome às rotas quando planeja gerar URLs.
+
+---
+
+## Padrões Comuns
+
+### Links RESTful de Recurso
+
+```php
 $router->get('/posts', [PostController::class, 'index'], name: 'posts.index');
 $router->get('/posts/{id}', [PostController::class, 'show'], name: 'posts.show');
 $router->get('/posts/{id}/edit', [PostController::class, 'edit'], name: 'posts.edit');
@@ -240,15 +321,21 @@ $router->get('/posts/{id}/edit', [PostController::class, 'edit'], name: 'posts.e
 <a href="<?= $router->urlFor('posts.index') ?>">Todos os posts</a>
 <a href="<?= $router->urlFor('posts.show', ['id' => $post->id]) ?>"><?= $post->title ?></a>
 <a href="<?= $router->urlFor('posts.edit', ['id' => $post->id]) ?>">Editar</a>
-Paginação
-php
+```
+
+### Paginação
+
+```php
 $router->get('/posts', [PostController::class, 'index'], name: 'posts.index');
 
 // Página 3
 $url = $router->urlFor('posts.index', [], ['page' => 3]);
 // → https://meusite.com/posts?page=3
-Redirect Após Ação
-php
+```
+
+### Redirect Após Ação
+
+```php
 public function store(Request $request, Response $response): Response
 {
     $post = $this->posts->create($request->all());
@@ -257,8 +344,11 @@ public function store(Request $request, Response $response): Response
         $this->router->urlFor('posts.show', ['id' => $post->id])
     );
 }
-Links do Painel Admin
-php
+```
+
+### Links do Painel Admin
+
+```php
 $router->group('/admin', name: 'admin', callback: function ($r) {
     $r->get('/dashboard', [AdminController::class, 'dashboard'], name: 'dashboard');
     $r->get('/users', [UserController::class, 'index'], name: 'users.index');
@@ -267,131 +357,173 @@ $router->group('/admin', name: 'admin', callback: function ($r) {
 // Numa view admin:
 <a href="<?= $router->urlFor('admin.dashboard') ?>">Dashboard</a>
 <a href="<?= $router->urlFor('admin.users.index') ?>">Usuários</a>
-Links em Emails
-php
+```
+
+### Links em Emails
+
+```php
 $verifyUrl = $router->urlFor('auth.verify', ['token' => $token]);
 // → https://meusite.com/auth/verify/abc123
 
 mail($email, 'Verifique sua conta', "Clique: {$verifyUrl}");
-Absoluto vs Relativo
-urlFor() sempre retorna uma URL absoluta (com scheme e host):
+```
 
-php
+### Absoluto vs Relativo
+
+`urlFor()` sempre retorna uma URL **absoluta** (com scheme e host):
+
+```php
 $router->urlFor('about');
 // → https://meusite.com/about
-Se você precisa de uma URL relativa:
+```
 
-php
+Se você precisa de uma URL **relativa**:
+
+```php
 $url = parse_url($router->urlFor('about'), PHP_URL_PATH);
 // → /about
-Injetando o Router nas Views
-Como urlFor() está no Router, passe-o para o seu engine de views:
+```
 
-php
+### Injetando o Router nas Views
+
+Como `urlFor()` está no Router, passe-o para o seu engine de views:
+
+```php
 $this->view->render('page', [
     'router' => $router,
     'post'   => $post,
 ]);
-php
+```
+
+```php
 <a href="<?= $router->urlFor('posts.show', ['id' => $post->id]) ?>">
-Helper de Rota (em Template Engine)
+```
+
+### Helper de Rota (em Template Engine)
+
 Se você usa Plates, registre uma função:
 
-php
+```php
 $engine->registerFunction('route', fn(string $name, array $params = [], array $query = []) =>
     $router->urlFor($name, $params, $query)
 );
+```
+
 Então nos templates:
 
-html
+```html
 <a href="<?= $this->route('posts.show', ['id' => $post->id]) ?>">Ver</a>
-Erros Comuns
-InvalidArgumentException em urlFor()
-Sintoma: Named route 'x' not found.
+```
 
-Causas:
+---
 
-Typo no nome da rota
+## Erros Comuns
 
-Rota não registrada (atrás de condicional que você não entrou)
+### `InvalidArgumentException` em `urlFor()`
 
-Cache não regenerado após adicionar a rota
+**Sintoma:** `Named route 'x' not found.`
 
-Correção:
+**Causas:**
 
-php
+1. **Typo** no nome da rota
+2. **Rota não registrada** (atrás de condicional que você não entrou)
+3. **Cache não regenerado** após adicionar a rota
+
+**Correção:**
+
+```php
 // Debug: liste todos os nomes registrados
 var_dump(array_keys($router->getNameIndex()));
-URL Sem Query String
-Sintoma: urlFor('posts.index', [], ['page' => 2]) não adiciona ?page=2.
+```
 
-Causa: passando params no argumento errado.
+### URL Sem Query String
 
-Correção: o terceiro argumento é para query string:
+**Sintoma:** `urlFor('posts.index', [], ['page' => 2])` não adiciona `?page=2`.
 
-php
+**Causa:** passando params no argumento errado.
+
+**Correção:** o **terceiro** argumento é para query string:
+
+```php
 // ✅ Correto
 $router->urlFor('posts.index', [], ['page' => 2]);
 
 // ❌ Errado — page vira parâmetro de path
 $router->urlFor('posts.index', ['page' => 2]);
-Host ou Scheme Errado
-Sintoma: urlFor() retorna uma URL com host errado.
+```
 
-Causa: projectUrl foi definido incorretamente ao criar o Router.
+### Host ou Scheme Errado
 
-Correção:
+**Sintoma:** `urlFor()` retorna uma URL com host errado.
 
-php
+**Causa:** `projectUrl` foi definido incorretamente ao criar o Router.
+
+**Correção:**
+
+```php
 $router = new Router('https://meusite.com');  // correto
 $router = new Router('https://staging.meusite.com');  // staging
-Dica: carregue a URL do env:
+```
 
-php
+**Dica:** carregue a URL do env:
+
+```php
 $router = new Router($_ENV['APP_URL']);
-Placeholder de Path Deixado na URL
-Sintoma: https://meusite.com/user/{id} (literal {id}).
+```
 
-Causa: o placeholder tem um caractere não permitido pela regex.
+### Placeholder de Path Deixado na URL
 
-Padrão de placeholder suportado: [a-zA-Z_][a-zA-Z0-9_-]*
+**Sintoma:** `https://meusite.com/user/{id}` (literal `{id}`).
 
-Correção: renomeie o placeholder para usar apenas letras, números, _, -.
+**Causa:** o placeholder tem um caractere não permitido pela regex.
 
-Array de Wildcard Não Expandido
-Sintoma: urlFor('files', ['path' => ['a', 'b']]) produz Array.
+**Padrão de placeholder suportado:** `[a-zA-Z_][a-zA-Z0-9_-]*`
 
-Causa: passando o array num contexto de string.
+**Correção:** renomeie o placeholder para usar apenas letras, números, `_`, `-`.
 
-Correção: urlFor() lida com arrays para wildcards automaticamente. Verifique a rota:
+### Array de Wildcard Não Expandido
 
-php
+**Sintoma:** `urlFor('files', ['path' => ['a', 'b']])` produz `Array`.
+
+**Causa:** passando o array num contexto de string.
+
+**Correção:** `urlFor()` lida com arrays para wildcards automaticamente. Verifique a rota:
+
+```php
 $router->get('/files/{path*}', ..., name: 'files');
 // ✅ Wildcard
+```
+
 vs
 
-php
+```php
 $router->get('/files/{path}', ..., name: 'files');
 // ❌ Segmento único — passar array vira "Array"
-Cache Não Regenerado
-Sintoma: uma rota recém-nomeada não é encontrada.
+```
 
-Causa: o índice de nomes está em cache. Após adicionar rotas, limpe o cache.
+### Cache Não Regenerado
 
-Correção:
+**Sintoma:** uma rota recém-nomeada não é encontrada.
 
-bash
+**Causa:** o índice de nomes está em cache. Após adicionar rotas, limpe o cache.
+
+**Correção:**
+
+```bash
 rm storage/cache/routes.php
-📖 Docs de cache →
+```
 
-Veja Também
-Rotas — nomeando rotas
+📖 [Docs de cache →](cache.md)
 
-Grupos — prefixos de nome
+---
 
-Cache — o índice de nomes e o cache
+## Veja Também
 
-Response — redirect() com urlFor()
+- [Rotas](routes.md) — nomeando rotas
+- [Grupos](groups.md) — prefixos de nome
+- [Cache](cache.md) — o índice de nomes e o cache
+- [Response](response.md) — `redirect()` com `urlFor()`
 
-← Voltar ao README | 🇺🇸 English
+---
 
+[← Voltar ao README](../../README.pt.md) | [🇺🇸 English](../en/url-generation.md)

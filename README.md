@@ -1,67 +1,72 @@
-SulCompany Router
-A lightweight, dependency-free PHP router with dynamic routes, middleware, route groups, contexts, and built-in error handling.
+# SulCompany Router
 
-https://img.shields.io/badge/php-%5E8.1-blue
-https://img.shields.io/badge/license-MIT-green
-https://img.shields.io/badge/PSR--11-compliant-brightgreen
-https://img.shields.io/packagist/v/sulcompany/router
-https://img.shields.io/packagist/dt/sulcompany/router
+> A lightweight, dependency-free PHP router with dynamic routes, middleware, route groups, contexts, and built-in error handling.
 
-🇺🇸 English | 🇵🇹 Português
+[![PHP Version](https://img.shields.io/badge/php-%5E8.1-blue)](https://www.php.net/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![PSR-11](https://img.shields.io/badge/PSR--11-compliant-brightgreen)](https://www.php-fig.org/psr/psr-11/)
+[![Latest Version](https://img.shields.io/packagist/v/sulcompany/router)](https://packagist.org/packages/sulcompany/router)
+[![Total Downloads](https://img.shields.io/packagist/dt/sulcompany/router)](https://packagist.org/packages/sulcompany/router)
 
-📖 Overview
-SulCompany Router is a mini routing framework for PHP 8.1+. It is not PSR-7, not FastRoute. It is a simple, direct, opinionated alternative for developers who want:
+🇺🇸 **English** | [🇵🇹 Português](README.pt.md)
 
-HTTP routing
+---
 
-Middleware pipeline
+## 📖 Overview
 
-Route groups with prefix, name, and context
+**SulCompany Router** is a mini routing framework for PHP 8.1+. It is **not** PSR-7, **not** FastRoute. It is a **simple, direct, opinionated** alternative for developers who want:
 
-Configurable error handling
+- HTTP routing
+- Middleware pipeline
+- Route groups with prefix, name, and context
+- Configurable error handling
+- An integrated PSR-11 container (optional)
+- **Zero dependencies besides `psr/container`**
 
-An integrated PSR-11 container (optional)
+It was built to be **predictable**, **readable**, and **extensible** — without the weight of a full framework.
 
-Zero dependencies besides psr/container
+---
 
-It was built to be predictable, readable, and extensible — without the weight of a full framework.
+## ✨ Features
 
-✨ Features
-✅ REST routes (GET, POST, PUT, PATCH, DELETE)
+- ✅ REST routes (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`)
+- ✅ Dynamic parameters (`/user/{id}`)
+- ✅ Wildcard parameters (`/files/{path*}`)
+- ✅ Named routes and URL generation
+- ✅ Nested groups (prefix + name + context + middleware)
+- ✅ Contexts (`admin`, `ecommerce`, ...) for differentiated error views
+- ✅ `before` / `after` middleware pipeline
+- ✅ PSR-11 container with autowiring
+- ✅ Route cache (via `var_export`)
+- ✅ Error handling via `ErrorHandlerInterface`
+- ✅ Automatic JSON / AJAX detection
+- ✅ No heavy dependencies
 
-✅ Dynamic parameters (/user/{id})
+---
 
-✅ Wildcard parameters (/files/{path*})
+## 📋 Requirements
 
-✅ Named routes and URL generation
+| Requirement | Version |
+|-------------|---------|
+| **PHP** | `^8.1` |
+| **Composer** | `^2.0` |
+| **psr/container** | `^2.0` (installed automatically) |
 
-✅ Nested groups (prefix + name + context + middleware)
+---
 
-✅ Contexts (admin, ecommerce, ...) for differentiated error views
+## 🚀 Installation
 
-✅ before / after middleware pipeline
-
-✅ PSR-11 container with autowiring
-
-✅ Route cache (via var_export)
-
-✅ Error handling via ErrorHandlerInterface
-
-✅ Automatic JSON / AJAX detection
-
-✅ No heavy dependencies
-
-📋 Requirements
-Requirement	Version
-PHP	^8.1
-Composer	^2.0
-psr/container	^2.0 (installed automatically)
-🚀 Installation
-bash
+```bash
 composer require sulcompany/router
-⚡ Quick Start
-1. Create public/index.php
-php
+```
+
+---
+
+## ⚡ Quick Start
+
+### 1. Create `public/index.php`
+
+```php
 <?php
 
 declare(strict_types=1);
@@ -87,30 +92,42 @@ $dispatcher->dispatch();
 while (ob_get_level() > 0) {
     ob_end_flush();
 }
-2. Test it
-GET / → returns HTML
+```
 
-GET /user/42 → executes UserController::show('42')
+### 2. Test it
 
-Done. 🎉
+- `GET /` → returns HTML
+- `GET /user/42` → executes `UserController::show('42')`
 
-🧠 The Basics
-Routes
-php
+**Done.** 🎉
+
+---
+
+## 🧠 The Basics
+
+### Routes
+
+```php
 $router->get('/about', [SiteController::class, 'about'], name: 'site.about');
 $router->get('/user/{id}', [UserController::class, 'show'], name: 'user.show');
 $router->get('/files/{path*}', [FileController::class, 'download'], name: 'files.download');
-📖 Full route documentation →
+```
 
-Groups
-php
+📖 [Full route documentation →](docs/en/routes.md)
+
+### Groups
+
+```php
 $router->group('/admin', name: 'admin', context: 'admin', middleware: [AuthAdmin::class], callback: function ($r) {
     $r->get('/users', [UserController::class, 'index'], name: 'users.index');
 });
-📖 Full group documentation →
+```
 
-Middleware
-php
+📖 [Full group documentation →](docs/en/groups.md)
+
+### Middleware
+
+```php
 class AuthMiddleware
 {
     public function before(Request $request, Response $response): bool
@@ -122,15 +139,21 @@ class AuthMiddleware
         return true;
     }
 }
-📖 Full middleware documentation →
+```
 
-Controllers
-php
+📖 [Full middleware documentation →](docs/en/middleware.md)
+
+### Controllers
+
+```php
 $router->get('/user/{id}', [UserController::class, 'show'], name: 'user.show');
-📖 Full controller documentation →
+```
 
-Request
-php
+📖 [Full controller documentation →](docs/en/controllers.md)
+
+### Request
+
+```php
 $request->method();
 $request->path();
 $request->header('accept');
@@ -138,17 +161,23 @@ $request->get('page');
 $request->post('name');
 $request->json('field');
 $request->expectsJson();
-📖 Full request documentation →
+```
 
-Response
-php
+📖 [Full request documentation →](docs/en/request.md)
+
+### Response
+
+```php
 return $response->html('<h1>Hello</h1>');
 return $response->json(['ok' => true]);
 return $response->redirect('/login');
-📖 Full response documentation →
+```
 
-Error Handling
-php
+📖 [Full response documentation →](docs/en/response.md)
+
+### Error Handling
+
+```php
 final class AppErrorHandler implements ErrorHandlerInterface
 {
     public function handle(int $status, Request $request, Response $response): Response
@@ -159,48 +188,68 @@ final class AppErrorHandler implements ErrorHandlerInterface
         return $response->html("<h1>Error {$status}</h1>", $status);
     }
 }
-📖 Full error handling documentation →
+```
 
-Container (DI)
-php
+📖 [Full error handling documentation →](docs/en/error-handling.md)
+
+### Container (DI)
+
+```php
 $container = new Container();
 $container->singleton(PDO::class, fn() => new PDO('mysql:...'));
 $container->bind(UserRepository::class, fn($c) => new UserRepository($c->get(PDO::class)));
-📖 Full container documentation →
+```
 
-Route Cache
-php
+📖 [Full container documentation →](docs/en/container.md)
+
+### Route Cache
+
+```php
 $router->enableCache(__DIR__ . '/cache/routes.php');
 if (!$router->loadCache()) {
     $router->get('/', ...);
     $router->compile();
     $router->cacheCompiledRoutes();
 }
-📖 Full cache documentation →
+```
 
-URL Generation
-php
+📖 [Full cache documentation →](docs/en/cache.md)
+
+### URL Generation
+
+```php
 $router->urlFor('user.show', ['id' => 42]);
 // → https://mysite.com/user/42
-📖 Full URL generation documentation →
+```
 
-📚 Documentation
-Document	Description
-Routes	HTTP methods, dynamic params, wildcards
-Groups	Prefix, name, context, middleware, nesting
-Middleware	Before/after, types, order
-Controllers	Closures, classes, DI
-Request	All request methods
-Response	All response builders
-Error Handling	Contract, default, custom
-Container	PSR-11, bind, singleton, autowiring
-Cache	Route compilation and caching
-URL Generation	Named routes and urlFor()
-📖 🇵🇹 Documentação em Português →
+📖 [Full URL generation documentation →](docs/en/url-generation.md)
 
-⚠️ Important Notes
-Output Buffering
-php
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Routes](docs/en/routes.md) | HTTP methods, dynamic params, wildcards |
+| [Groups](docs/en/groups.md) | Prefix, name, context, middleware, nesting |
+| [Middleware](docs/en/middleware.md) | Before/after, types, order |
+| [Controllers](docs/en/controllers.md) | Closures, classes, DI |
+| [Request](docs/en/request.md) | All request methods |
+| [Response](docs/en/response.md) | All response builders |
+| [Error Handling](docs/en/error-handling.md) | Contract, default, custom |
+| [Container](docs/en/container.md) | PSR-11, bind, singleton, autowiring |
+| [Cache](docs/en/cache.md) | Route compilation and caching |
+| [URL Generation](docs/en/url-generation.md) | Named routes and urlFor() |
+
+📖 [🇵🇹 Documentação em Português →](docs/pt/)
+
+---
+
+## ⚠️ Important Notes
+
+### Output Buffering
+
+```php
 ob_start();           // at the top
 
 // ... your code ...
@@ -208,46 +257,64 @@ ob_start();           // at the top
 while (ob_get_level() > 0) {
     ob_end_flush();   // at the end
 }
-Without this, your pages may render blank with content-length: 0.
+```
 
-Exceptions
-The Router does not catch exceptions. Use try/catch in your index.php.
+Without this, your pages may render **blank** with `content-length: 0`.
 
-Not PSR-7
-Request and Response are mutable and minimalist.
+### Exceptions
 
-PSR-11 Container
-The Container class implements Psr\Container\ContainerInterface.
+The Router does **not** catch exceptions. Use `try/catch` in your `index.php`.
 
-🧩 Compatibility
-PHP	Supported
-8.1	✅
-8.2	✅
-8.3	✅
-8.4	✅ (not yet tested)
-7.x	❌
-🤝 Contributing
-Fork the repository
+### Not PSR-7
 
-Create a feature branch
+`Request` and `Response` are mutable and minimalist.
 
-Commit your changes
+### PSR-11 Container
 
-Push to the branch
+The `Container` class implements `Psr\Container\ContainerInterface`.
 
-Open a Pull Request
+---
 
-🐛 Reporting Issues
-Open an issue with PHP version, Router version, and a minimal reproduction.
+## 🧩 Compatibility
 
-👥 Credits
-Francisco Dulo — author
+| PHP | Supported |
+|-----|-----------|
+| 8.1 | ✅ |
+| 8.2 | ✅ |
+| 8.3 | ✅ |
+| 8.4 | ✅ (not yet tested) |
+| 7.x | ❌ |
 
-Sul Company Lda — maintainer
+---
 
-Contributors — everyone who helped
+## 🤝 Contributing
 
-📄 License
-MIT — see LICENSE.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
 
-SulCompany Router — made with 🖤 in Angola.
+---
+
+## 🐛 Reporting Issues
+
+[Open an issue](https://github.com/sulcompany/router/issues) with PHP version, Router version, and a minimal reproduction.
+
+---
+
+## 👥 Credits
+
+- **Francisco Dulo** — author
+- **Sul Company Lda** — maintainer
+- **Contributors** — everyone who helped
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+**SulCompany Router** — made with 🖤 in Angola.
