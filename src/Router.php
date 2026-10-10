@@ -1,29 +1,35 @@
 <?php
+
 declare(strict_types=1);
 
 namespace SulCompany\Router;
 
+use Psr\Container\ContainerInterface;
+
 class Router
 {
     protected string $projectUrl;
-    protected array $routes = []; // method => [Route,...] (definition)
-    protected array $nameIndex = []; // name => ['method'=>..., 'path'=>...]
+    protected array $routes = [];
+    protected array $nameIndex = [];
     protected array $globalMiddlewares = [];
-    protected ?string $currentGroup = null;
-    protected ?array $currentGroupMiddleware = null;
 
-    protected array $staticRoutes = [];   // method => ["/fixed/path" => Route]
-    protected array $dynamicRoutes = [];  // method => [ ['regex'=>..., 'route'=>Route], ... ]
+    /** @var array<int, array{prefix:string,name:string,context:?string,middleware:array}> */
+    protected array $groupStack = [];
+
+    protected array $staticRoutes = [];
+    protected array $dynamicRoutes = [];
 
     public bool $cacheEnabled = false;
     protected ?string $cacheFile = null;
+
+    public const DEFAULT_CONTEXT = 'ecommerce';
 
     public function __construct(string $projectUrl)
     {
         $this->projectUrl = rtrim($projectUrl, '/');
     }
 
-    // ---- public API (route registration) ----
+    // ---- HTTP verbs ----
     public function get(string $path, callable|array $handler, ?string $name = null, array|string $middleware = null): self
     {
         return $this->addRoute('GET', $path, $handler, $name, $middleware);
@@ -49,57 +55,104 @@ class Router
         return $this->addRoute('DELETE', $path, $handler, $name, $middleware);
     }
 
-    protected function addRoute(string $method, string $path, callable|array $handler, ?string $name = null, array|string $middleware = null): self
+    // ---- group ----
+    public function group(
+        string $prefix,
+        callable $callback,
+        array|string|null $middleware = null,
+        ?string $name = null,
+        ?string $context = null
+    ): self {
+        $parent = $this->currentGroup();
+
+        $entry = [
+            'prefix'   => trim($parent['prefix'] . '/' . trim($prefix, '/'), '/'),
+            'name'     => $name !== null
+                ? trim($parent['name'] . '.' . $name, '.')
+                : $parent['name'],
+            'context'  => $context ?? $parent['context'],
+            'middleware' => array_merge(
+                $parent['middleware'],
+                $middleware ? (array)$middleware : []
+            ),
+        ];
+
+        $this->groupStack[] = $entry;
+
+        $callback($this);
+
+        array_pop($this->groupStack);
+
+        return $this;
+    }
+
+    protected function currentGroup(): array
     {
-        $path = $this->normalizePath($path);
-        // apply group prefix at registration time so lookup is simpler later
-        $fullPath = $this->applyGroupPrefixAtRegistration($path);
+        if (empty($this->groupStack)) {
+            return [
+                'prefix'     => '',
+                'name'       => '',
+                'context'    => null,
+                'middleware' => [],
+            ];
+        }
+
+        return $this->groupStack[array_key_last($this->groupStack)];
+    }
+
+    // ---- addRoute ----
+    protected function addRoute(
+        string $method,
+        string $path,
+        callable|array $handler,
+        ?string $name = null,
+        array|string $middleware = null
+    ): self {
+        $group = $this->currentGroup();
+
+        $normalizedPath = $this->normalizePath($path);
+        $fullPath = $this->applyGroupPrefix($normalizedPath, $group['prefix']);
+
+        $fullName = $name !== null
+            ? ($group['name'] !== '' ? $group['name'] . '.' . $name : $name)
+            : null;
 
         [$handlerValue, $action] = $this->parseHandler($handler);
-        $middlewares = $this->resolveRouteMiddlewares($middleware);
 
-        $route = new Route($method, $fullPath, $handlerValue, $action, $name, $middlewares);
+        $middlewares = array_merge(
+            $this->globalMiddlewares,
+            $group['middleware'],
+            $middleware ? (array)$middleware : []
+        );
+
+        $route = new Route($method, $fullPath, $handlerValue, $action, $fullName, $middlewares);
+        $route->setAttribute('context', $group['context'] ?? self::DEFAULT_CONTEXT);
 
         $this->routes[$method][] = $route;
 
-        if ($name) {
-            $this->nameIndex[$name] = ['method' => $method, 'path' => $fullPath];
+        if ($fullName) {
+            $this->nameIndex[$fullName] = ['method' => $method, 'path' => $fullPath];
         }
 
-        // keep compiled structures invalidated — compile() will rebuild
         $this->staticRoutes = [];
         $this->dynamicRoutes = [];
 
         return $this;
     }
 
-    // ---- group support ----
-    public function group(string $prefix, callable $callback, array|string $middleware = null): self
+    protected function applyGroupPrefix(string $path, string $groupPrefix): string
     {
-        $previousGroup = $this->currentGroup;
-        $previousMiddleware = $this->currentGroupMiddleware;
-
-        $this->currentGroup = trim($prefix, '/');
-        $this->currentGroupMiddleware = $middleware ? (array)$middleware : null;
-
-        $callback($this);
-
-        $this->currentGroup = $previousGroup;
-        $this->currentGroupMiddleware = $previousMiddleware;
-
-        return $this;
-    }
-
-    protected function applyGroupPrefixAtRegistration(string $path): string
-    {
-        if ($this->currentGroup) {
-            $prefix = '/' . trim($this->currentGroup, '/');
-            if ($path === '/') {
-                return $prefix;
-            }
-            return $prefix . ($path === '/' ? '' : $path);
+        if ($groupPrefix === '') {
+            return $path;
         }
-        return $path;
+
+        $prefix = '/' . trim($groupPrefix, '/');
+
+        if ($path === '/') {
+            return $prefix === '/' ? '/' : $prefix;
+        }
+
+        return $prefix . $path;
     }
 
     // ---- middleware ----
@@ -112,13 +165,6 @@ class Router
     public function getGlobalMiddlewares(): array
     {
         return $this->globalMiddlewares;
-    }
-
-    protected function resolveRouteMiddlewares(array|string|null $routeMiddleware): array
-    {
-        $routeMw = $routeMiddleware ? (array)$routeMiddleware : [];
-        $groupMw = $this->currentGroupMiddleware ?? [];
-        return array_merge($this->globalMiddlewares, $groupMw, $routeMw);
     }
 
     // ---- cache ----
@@ -138,12 +184,10 @@ class Router
         $cached = require $this->cacheFile;
         if (!is_array($cached)) return false;
 
-        // rebuild Route objects from cached metadata
         $this->staticRoutes = [];
         foreach ($cached['static'] ?? [] as $method => $map) {
             foreach ($map as $path => $meta) {
-                $r = $this->routeFromMeta($meta);
-                $this->staticRoutes[$method][$path] = $r;
+                $this->staticRoutes[$method][$path] = $this->routeFromMeta($meta);
             }
         }
 
@@ -178,14 +222,19 @@ class Router
                 $route = $entry['route'];
                 if ($this->isClosure($route->handler)) continue;
                 $dynamic[$method][] = [
-                    'regex' => $entry['regex'],
-                    'route' => $this->serializeRouteMeta($route),
-                    'paramNames' => $route->paramNames
+                    'regex'      => $entry['regex'],
+                    'route'      => $this->serializeRouteMeta($route),
+                    'paramNames' => $route->paramNames,
                 ];
             }
         }
 
-        $export = var_export(['static' => $static, 'dynamic' => $dynamic, 'names' => $this->nameIndex], true);
+        $export = var_export([
+            'static'  => $static,
+            'dynamic' => $dynamic,
+            'names'   => $this->nameIndex,
+        ], true);
+
         $content = "<?php\n\nreturn {$export};\n";
 
         $dir = dirname($this->cacheFile);
@@ -195,31 +244,44 @@ class Router
 
     protected function routeFromMeta(array $meta): Route
     {
-        $handler = $meta['handler'] ?? null;
-        $route = new Route($meta['method'], $meta['path'], $handler, $meta['action'] ?? null, $meta['name'] ?? null, $meta['middlewares'] ?? []);
+        $route = new Route(
+            $meta['method'],
+            $meta['path'],
+            $meta['handler'] ?? null,
+            $meta['action'] ?? null,
+            $meta['name'] ?? null,
+            $meta['middlewares'] ?? []
+        );
+
         $route->regex = $meta['regex'] ?? null;
         $route->paramNames = $meta['paramNames'] ?? [];
+
+        // 👇 restaura atributos (context incluso)
+        if (!empty($meta['attributes'])) {
+            $route->setAttributes($meta['attributes']);
+        }
+
         return $route;
     }
 
     protected function serializeRouteMeta(Route $route): array
     {
         return [
-            'method' => $route->method,
-            'path' => $route->path,
-            'handler' => is_string($route->handler) ? $route->handler : null,
-            'action' => $route->action,
-            'name' => $route->name,
+            'method'      => $route->method,
+            'path'        => $route->path,
+            'handler'     => is_string($route->handler) ? $route->handler : null,
+            'action'      => $route->action,
+            'name'        => $route->name,
             'middlewares' => $route->middlewares,
-            'regex' => $route->regex,
-            'paramNames' => $route->paramNames,
+            'regex'       => $route->regex,
+            'paramNames'  => $route->paramNames,
+            'attributes'  => $route->getAttributes(), // 👈 preserva context
         ];
     }
 
-    // ---- compile (build optimized lookup structures) ----
+    // ---- compile ----
     public function compile(): void
     {
-        // if staticRoutes already built and not empty, skip
         if (!empty($this->staticRoutes) || !empty($this->dynamicRoutes)) {
             return;
         }
@@ -251,9 +313,8 @@ class Router
         }
 
         $info = $this->nameIndex[$name];
-        $path = $info['path'];
+        $url = $info['path'];
 
-        $url = $path;
         foreach ($params as $k => $v) {
             $placeholder = '{' . $k . '}';
             $wild = '{' . $k . '*}';
@@ -305,7 +366,7 @@ class Router
                 throw new \InvalidArgumentException("Controller inválido: '{$controller}'.");
             }
             if (!is_string($method) || $method === '') {
-                throw new \InvalidArgumentException("Método do controller inválido; deve ser string não vazia.");
+                throw new \InvalidArgumentException("Método do controller inválido.");
             }
             return [$controller, $method];
         }
@@ -318,35 +379,15 @@ class Router
         return is_object($handler) && ($handler instanceof \Closure);
     }
 
-    protected function isStringCallable($h): bool
+    // ---- accessors ----
+    public function dispatch(?ContainerInterface $container = null): bool
     {
-        return is_string($h) && strpos($h, '::') !== false;
-    }
-
-    // ---- compatibility wrappers & accessors ----
-    public function dispatch(): bool
-    {
-        $dispatcher = new Dispatcher($this);
+        $dispatcher = new Dispatcher($this, $container);
         return $dispatcher->dispatch();
     }
 
-    public function getStaticRoutes(): array
-    {
-        return $this->staticRoutes;
-    }
-
-    public function getDynamicRoutes(): array
-    {
-        return $this->dynamicRoutes;
-    }
-
-    public function getNameIndex(): array
-    {
-        return $this->nameIndex;
-    }
-
-    public function getProjectUrl(): string
-    {
-        return $this->projectUrl;
-    }
+    public function getStaticRoutes(): array { return $this->staticRoutes; }
+    public function getDynamicRoutes(): array { return $this->dynamicRoutes; }
+    public function getNameIndex(): array { return $this->nameIndex; }
+    public function getProjectUrl(): string { return $this->projectUrl; }
 }

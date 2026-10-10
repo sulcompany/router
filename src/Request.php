@@ -60,76 +60,84 @@ class Request
         return $this->route;
     }
 
-    public function method(): string { return $this->method; }
-    public function path(): string { return $this->path; }
-    
-    public function header(string $name = null) : array|string|null
+    public function method(): string
     {
-        if ($name === null) return $this->headers;
-        $name = strtolower($name);
-        return $this->headers[$name] ?? null;
+        return $this->method;
     }
 
-    
-    public function get(string $key = null, $default = null)
+    public function isMethod(string $method): bool
+    {
+        return $this->method === strtoupper($method);
+    }
+
+    public function path(): string
+    {
+        return $this->path;
+    }
+
+    public function header(?string $name = null): array|string|null
+    {
+        if ($name === null) return $this->headers;
+        return $this->headers[strtolower($name)] ?? null;
+    }
+
+    public function get(?string $key = null, $default = null)
     {
         if ($key === null) return $this->get;
         return $this->get[$key] ?? $default;
     }
 
-
-    public function post(string $key = null, $default = null)
+    public function post(?string $key = null, $default = null)
     {
         if ($key === null) return $this->post;
         return $this->post[$key] ?? $default;
     }
 
-
-    public function file(string $key = null, $default = null)
+    public function file(?string $key = null, $default = null)
     {
         if ($key === null) return $this->files;
-
         return $this->files[$key] ?? $default;
     }
 
-    public function json(string $key = null, $default = null)
+    public function json(?string $key = null, $default = null)
     {
         if ($key === null) return $this->json;
         return $this->json[$key] ?? $default;
     }
 
-
-
-    public function all(string $key = null, $default = null)
+    public function all(?string $key = null, $default = null)
     {
         if ($key === null) return $this->all;
         return $this->all[$key] ?? $default;
     }
-
-
 
     public function ip(): ?string
     {
         if (!empty($this->server['HTTP_X_FORWARDED_FOR'])) {
             return explode(',', $this->server['HTTP_X_FORWARDED_FOR'])[0];
         }
-
         return $this->server['REMOTE_ADDR'] ?? null;
     }
-
 
     public function userAgent(): ?string
     {
         return $this->header('user-agent');
     }
 
-
     public function wantsJson(): bool
     {
         $accept = $this->header('accept') ?? '';
-        $xhr    = $this->header('x-requested-with') ?? '';
-
-        return str_contains($accept, 'application/json') || strtolower($xhr) === 'xmlhttprequest';
+        return str_contains($accept, 'application/json');
     }
 
+    public function isAjax(): bool
+    {
+        $xhr = $this->header('x-requested-with') ?? '';
+        return strtolower($xhr) === 'xmlhttprequest';
+    }
+
+    public function expectsJson(): bool
+    {
+        return $this->wantsJson() || $this->isAjax();
+    }
 }

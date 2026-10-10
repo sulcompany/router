@@ -7,31 +7,32 @@ namespace SulCompany\Router\DI;
 use Psr\Container\ContainerInterface;
 use ReflectionClass;
 use ReflectionNamedType;
-use Exception;
+use ReflectionParameter;
+use SulCompany\Router\DI\Exceptions\ContainerException;
+use SulCompany\Router\DI\Exceptions\NotFoundException;
 
-/**
- * Container profissional para injeção de dependências
- * Suporta:
- * - bind() → cria nova instância a cada get()
- * - singleton() → mesma instância em todas as resoluções
- */
 class Container implements ContainerInterface
 {
     /**
-     * @var array<string, array{concrete: callable|object, singleton: bool}>
+     * @var array<string, array{
+     *     concrete: callable|object,
+     *     singleton: bool
+     * }>
      */
     protected array $definitions = [];
 
     /**
-     * @var array<string, object> Instâncias singleton
+     * @var array<string, object>
      */
     protected array $instances = [];
 
     /**
-     * Registra um serviço que será instanciado sempre que solicitado
-     *
-     * @param string $id Nome da classe ou interface
-     * @param callable|object $concrete Closure que retorna instância ou objeto
+     * @var array<string, bool>
+     */
+    protected array $resolving = [];
+
+    /**
+     * Registra uma definição transient (nova instância a cada get).
      */
     public function bind(string $id, callable|object $concrete): void
     {
@@ -42,10 +43,7 @@ class Container implements ContainerInterface
     }
 
     /**
-     * Registra um serviço como singleton
-     *
-     * @param string $id Nome da classe ou interface
-     * @param callable|object $concrete Closure que retorna instância ou objeto
+     * Registra uma definição shared (mesma instância sempre).
      */
     public function singleton(string $id, callable|object $concrete): void
     {
@@ -56,104 +54,146 @@ class Container implements ContainerInterface
     }
 
     /**
-     * Recupera instância do serviço
+     * Registra uma instância já criada (sempre shared).
+     */
+    public function instance(string $id, object $instance): void
+    {
+        $this->instances[$id] = $instance;
+    }
+
+    /**
+     * Resolve uma entrada do container.
      *
-     * @param string $id
-     * @return mixed
-     * @throws Exception
+     * @throws NotFoundException  quando não há definição e não é autowireable
+     * @throws ContainerException quando a resolução falha (circular, etc)
      */
     public function get(string $id): mixed
     {
-        // Se já existe instância singleton
+        // 1. Instância já resolvida?
         if (isset($this->instances[$id])) {
             return $this->instances[$id];
         }
 
-        // Se foi registrado
+        // 2. Definição registrada?
         if (isset($this->definitions[$id])) {
-            $definition = $this->definitions[$id];
-            $concrete = $definition['concrete'];
-
-            $object = is_callable($concrete) ? $concrete($this) : $concrete;
-
-            // Se for singleton, salva a instância
-            if ($definition['singleton']) {
-                $this->instances[$id] = $object;
-            }
-
-            return $object;
+            return $this->resolveDefinition($id);
         }
 
-        // Se for classe existente, resolve via reflection
+        // 3. Autowiring implícito
         if (class_exists($id)) {
-            $object = $this->resolveClass($id);
-            // Por padrão, classes resolvidas via reflection são singleton
-            $this->instances[$id] = $object;
-            return $object;
+            return $this->resolveClass($id);
         }
 
-        throw new Exception("Serviço ou classe '{$id}' não encontrado no container.");
+        throw new NotFoundException(
+            "Serviço ou classe '{$id}' não encontrado no container."
+        );
     }
 
     /**
-     * Verifica se o container possui um serviço
+     * Verifica se há uma definição registrada.
      *
-     * @param string $id
-     * @return bool
+     * Não considera autowiring: retorna true apenas para bind/singleton/instance.
      */
     public function has(string $id): bool
     {
-        return isset($this->definitions[$id]) || isset($this->instances[$id]) || class_exists($id);
+        return isset($this->definitions[$id])
+            || isset($this->instances[$id]);
     }
 
-    /**
-     * Resolve uma classe automaticamente via Reflection
-     *
-     * @param string $class
-     * @return object
-     * @throws Exception
-     */
-    protected function resolveClass(string $class): object
+    protected function resolveDefinition(string $id): object
     {
-        $r = new ReflectionClass($class);
-        $constructor = $r->getConstructor();
+        $definition = $this->definitions[$id];
+        $concrete = $definition['concrete'];
 
-        if (!$constructor) return new $class();
+        $object = is_callable($concrete)
+            ? $concrete($this)
+            : $concrete;
 
-        $args = [];
-        foreach ($constructor->getParameters() as $param) {
-            $args[] = $this->resolveParameter($param);
+        if (!is_object($object)) {
+            throw new ContainerException(
+                "A definição '{$id}' deve resolver para um objeto."
+            );
         }
 
-        return $r->newInstanceArgs($args);
+        if ($definition['singleton']) {
+            $this->instances[$id] = $object;
+        }
+
+        return $object;
     }
 
-    /**
-     * Resolve parâmetro de método ou construtor
-     *
-     * @param \ReflectionParameter $param
-     * @return mixed
-     * @throws Exception
-     */
-    protected function resolveParameter(\ReflectionParameter $param): mixed
+    protected function resolveClass(string $class): object
     {
-        $type = $param->getType();
+        if (isset($this->resolving[$class])) {
+            throw new ContainerException(
+                "Detecção de dependência circular ao resolver '{$class}'."
+            );
+        }
 
-        if ($type instanceof ReflectionNamedType) {
+        $this->resolving[$class] = true;
+
+        try {
+            $reflection = new ReflectionClass($class);
+
+            if (!$reflection->isInstantiable()) {
+                throw new ContainerException(
+                    "A classe '{$class}' não pode ser instanciada."
+                );
+            }
+
+            $constructor = $reflection->getConstructor();
+
+            if ($constructor === null) {
+                return new $class();
+            }
+
+            $args = [];
+
+            foreach ($constructor->getParameters() as $parameter) {
+                $args[] = $this->resolveParameter($parameter);
+            }
+
+            return $reflection->newInstanceArgs($args);
+
+        } finally {
+            unset($this->resolving[$class]);
+        }
+    }
+
+    protected function resolveParameter(ReflectionParameter $parameter): mixed
+    {
+        $type = $parameter->getType();
+
+        if ($type instanceof ReflectionNamedType && !$type->isBuiltin()) {
             $name = $type->getName();
+
             if ($this->has($name)) {
                 return $this->get($name);
             }
+
             if (class_exists($name)) {
                 return $this->resolveClass($name);
             }
+
+            throw new ContainerException(
+                "Não foi possível resolver o tipo '{$name}' "
+                . "para o parâmetro \${$parameter->getName()}."
+            );
         }
 
-        // Se tiver valor default, retorna ele
-        if ($param->isDefaultValueAvailable()) {
-            return $param->getDefaultValue();
+        if ($parameter->isDefaultValueAvailable()) {
+            return $parameter->getDefaultValue();
         }
 
-        throw new Exception("Não foi possível resolver o parâmetro \${$param->getName()} em {$param->getDeclaringClass()->getName()}");
+        if ($parameter->allowsNull()) {
+            return null;
+        }
+
+        $declaring = $parameter->getDeclaringClass()?->getName() ?? 'desconhecida';
+
+        throw new ContainerException(
+            "Não foi possível resolver o parâmetro "
+            . "\${$parameter->getName()} em {$declaring}."
+        );
     }
 }

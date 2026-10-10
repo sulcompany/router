@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace SulCompany\Router;
@@ -25,8 +26,11 @@ class Dispatcher
     protected ?ContainerInterface $container = null;
 
     public const BAD_REQUEST = 400;
+    public const UNAUTHORIZED = 401;
+    public const FORBIDDEN = 403;
     public const NOT_FOUND = 404;
     public const METHOD_NOT_ALLOWED = 405;
+    public const SERVER_ERROR = 500;
     public const NOT_IMPLEMENTED = 501;
 
     public function __construct(Router $router, ?ContainerInterface $container = null)
@@ -44,7 +48,7 @@ class Dispatcher
             $_GET ?? [],
             $_POST ?? [],
             $this->requestData['__json'] ?? [],
-            $_FILES?? [],
+            $_FILES ?? [],
             $this->httpMethod,
             $this->path
         );
@@ -80,7 +84,6 @@ class Dispatcher
         return rtrim($routePath, '/') ?: '/';
     }
 
-
     protected function gatherRequestData(): void
     {
         $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
@@ -95,12 +98,8 @@ class Dispatcher
             stripos($contentType, 'application/json') !== false
         ) {
             $raw = file_get_contents('php://input');
-
             $decoded = json_decode($raw, true);
-
-            if (is_array($decoded)) {
-                $json = $decoded;
-            }
+            if (is_array($decoded)) $json = $decoded;
         }
 
         if (isset($post['_method'])) {
@@ -109,55 +108,81 @@ class Dispatcher
         }
 
         $this->httpMethod = $method;
-
         $this->requestData = array_merge($get, $post);
         $this->requestData['__json'] = $json;
     }
 
-    
+   
+
     public function dispatch(): bool
     {
+        $this->error = null;
         $method = $this->httpMethod;
 
-        // Static routes
+        // Static
         $static = $this->router->getStaticRoutes()[$method] ?? [];
         if (isset($static[$this->path])) {
             $this->matchedRoute = $static[$this->path];
             $this->params = [];
             $this->request->setRoute($this->matchedRoute);
-            return $this->runMatched();
+
+            $result = $this->runMatched();
+            $this->finalizeResponse();  // 👈 SEMPRE envia
+            return $result;
         }
 
-        // Dynamic routes
+        // Dynamic
         $dynamic = $this->router->getDynamicRoutes()[$method] ?? [];
         foreach ($dynamic as $entry) {
             if (preg_match($entry['regex'], $this->path, $matches)) {
                 array_shift($matches);
+
                 $route = $entry['route'];
                 $params = [];
+
                 foreach ($route->paramNames as $i => $name) {
                     $params[str_ends_with($name, '*') ? rtrim($name, '*') : $name] =
-                        str_ends_with($name, '*') ? explode('/', $matches[$i] ?? '') : ($matches[$i] ?? null);
+                        str_ends_with($name, '*')
+                            ? explode('/', $matches[$i] ?? '')
+                            : ($matches[$i] ?? null);
                 }
+
                 $this->matchedRoute = $route;
                 $this->params = $params;
                 $this->request->setRoute($route);
-                return $this->runMatched();
+
+                $result = $this->runMatched();
+                $this->finalizeResponse();  // 👈 SEMPRE envia
+                return $result;
             }
         }
 
+        // 404 puro: NÃO envia — ErrorHandler decide
         $this->error = self::NOT_FOUND;
         return false;
     }
+
 
     public function error(): ?int
     {
         return $this->error;
     }
 
-    /**
-     * Executa middlewares modernos e controller
-     */
+    public function getRequest(): Request
+    {
+        return $this->request;
+    }
+
+    public function getResponse(): Response
+    {
+        return $this->response;
+    }
+
+    public function getMatchedRoute(): ?Route
+    {
+        return $this->matchedRoute;
+    }
+
     protected function runMatched(): bool
     {
         if (!$this->matchedRoute) {
@@ -167,28 +192,24 @@ class Dispatcher
 
         $executedPipeline = [];
 
-        // ---- BEFORE MIDDLEWARES ----
         foreach ($this->matchedRoute->middlewares as $mwClass) {
             $middleware = $this->resolveClass($mwClass);
             $executedPipeline[] = $middleware;
 
             if (method_exists($middleware, 'before')) {
                 if ($middleware->before($this->request, $this->response) === false) {
-                    return false; // interrompe pipeline
+                    $this->error = $this->response->getStatusCode() ?: self::FORBIDDEN;
+                    return false;
                 }
                 continue;
             }
-
-            $this->error = self::METHOD_NOT_ALLOWED;
-            return false;
+            // middleware sem before() é ignorado (não é erro)
         }
 
-        // ---- CONTROLLER ----
         if (!$this->runController()) {
             return false;
         }
 
-        // ---- AFTER MIDDLEWARES ----
         foreach (array_reverse($executedPipeline) as $middleware) {
             if (method_exists($middleware, 'after')) {
                 $middleware->after($this->request, $this->response);
@@ -202,13 +223,20 @@ class Dispatcher
     {
         $route = $this->matchedRoute;
 
-        // Closure
         if (is_callable($route->handler) && !$this->isStringCallable($route->handler)) {
-            call_user_func($route->handler, $this->request, $this->response, $this->params);
+            $result = call_user_func(
+                $route->handler,
+                $this->request,
+                $this->response,
+                $this->params
+            );
+
+            if ($result instanceof Response) {
+                $this->response = $result;
+            }
             return true;
         }
 
-        // Controller
         $controllerClass = $route->handler;
         $method = $route->action;
 
@@ -226,27 +254,34 @@ class Dispatcher
 
         $reflection = new ReflectionMethod($controller, $method);
         $args = [];
+
         foreach ($reflection->getParameters() as $param) {
             $args[] = $this->resolveParameter($param);
         }
 
-        $reflection->invokeArgs($controller, $args);
+        $result = $reflection->invokeArgs($controller, $args);
+
+        if ($result instanceof Response) {
+            $this->response = $result;
+        }
+
         return true;
     }
 
-    /**
-     * Resolve uma classe usando container ou reflection
-     */
+    protected function finalizeResponse(): void
+    {
+        $this->response->send();
+    }
+
     protected function resolveClass(string $class)
     {
-        // 1. Tenta container
         if ($this->container && $this->container->has($class)) {
             return $this->container->get($class);
         }
 
-        // 2. Reflection
         $r = new ReflectionClass($class);
         $constructor = $r->getConstructor();
+
         if (!$constructor) return new $class();
 
         $args = [];
@@ -257,9 +292,6 @@ class Dispatcher
         return $r->newInstanceArgs($args);
     }
 
-    /**
-     * Resolve parâmetro de método ou construtor
-     */
     protected function resolveParameter(\ReflectionParameter $param)
     {
         $type = $param->getType();
@@ -267,24 +299,22 @@ class Dispatcher
         if ($type instanceof ReflectionNamedType) {
             $name = $type->getName();
 
-            // Request e Response
             if ($name === Request::class) return $this->request;
             if ($name === Response::class) return $this->response;
 
-            // Container / auto-instancia
             if ($this->container && $this->container->has($name)) {
                 return $this->container->get($name);
             }
+
             if (class_exists($name)) {
                 return $this->resolveClass($name);
             }
         }
 
-        // Parâmetro da rota
         $pName = $param->getName();
+
         if (isset($this->params[$pName])) return $this->params[$pName];
 
-        // Query / POST / JSON
         return $this->request->all($pName);
     }
 
